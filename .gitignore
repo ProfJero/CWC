@@ -3,3 +3,5 @@ node_modules
 *.log
 .env
 .wrangler
+supabase/.temp
+supabase/.branches
