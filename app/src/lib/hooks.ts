@@ -48,3 +48,17 @@ export function useDocumentTitle(title: string) {
     document.title = title ? `${title} · CWC` : 'Christian Worship Centre';
   }, [title]);
 }
+
+/** A random, stable identifier for this device (used for "I prayed" without an account). */
+export function deviceKey(): string {
+  try {
+    let k = localStorage.getItem('cwc-device-id');
+    if (!k) {
+      k = crypto.randomUUID();
+      localStorage.setItem('cwc-device-id', k);
+    }
+    return k;
+  } catch {
+    return 'session-' + Math.random().toString(36).slice(2, 18);
+  }
+}

@@ -1,23 +1,22 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router';
-import { HeartHandshake, HandHeart, CalendarDays, PlaySquare, BookOpen, Bell, Pin, ScanLine, ChevronRight, Sparkles, Quote } from 'lucide-react';
-import { collection, query, where } from 'firebase/firestore';
+import { HeartHandshake, HandHeart, CalendarDays, PlaySquare, BookOpen, Bell, Pin, ScanLine, ChevronRight, Sparkles, Quote, Radio, MapPin, UserRoundPlus } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { useChurch } from '@/lib/settings';
-import { db, useCollection } from '@/lib/db';
-import { usePublishedAnnouncements, usePublishedDevotionals, usePublishedEvents, usePublishedSermons, usePublishedTestimonies } from '@/lib/queries';
+import { useLiveServices, usePublishedAnnouncements, usePublishedDevotionals, usePublishedEvents, usePublishedSermons, usePublishedTestimonies } from '@/lib/queries';
 import { fmtDate, greeting, isoDate, relative } from '@/lib/format';
 import { excerpt, youtubeId } from '@/lib/utils';
-import { cld } from '@/lib/cloudinary';
+import { cld } from '@/lib/media';
 import { enablePush, getPushState, needsInstallForPush, type PushState } from '@/lib/push';
-import type { Service } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { CwcLogo } from '@/components/brand';
 import { MemberPage, SectionTitle, Rail, EventCard, QuickAction } from './ui';
 import { toast } from 'sonner';
+import { useRequireProfile } from '@/components/profile-prompt';
 
 export default function Home() {
-  const { profile, user } = useAuth();
+  const { profile, hasProfile } = useAuth();
+  const requireProfile = useRequireProfile();
   const church = useChurch();
   const today = isoDate();
   const { data: devs, loading: devLoading } = usePublishedDevotionals(today);
@@ -25,7 +24,7 @@ export default function Home() {
   const { data: sermons } = usePublishedSermons();
   const { data: announcements } = usePublishedAnnouncements();
   const { data: testimonies } = usePublishedTestimonies();
-  const { data: live } = useCollection<Service>('services:live', () => query(collection(db, 'services'), where('isOpen', '==', true)));
+  const { data: live } = useLiveServices();
   const [push, setPush] = useState<PushState | null>(null);
 
   useEffect(() => {
@@ -42,7 +41,7 @@ export default function Home() {
 
   async function turnOnPush() {
     try {
-      const s = await enablePush(user!.uid);
+      const s = await enablePush();
       setPush(s);
       if (s === 'subscribed') toast.success('Notifications are on');
       else if (s === 'denied') toast.error('Notifications are blocked in your browser settings');
@@ -56,7 +55,32 @@ export default function Home() {
       <header className="mb-5">
         <p className="text-sm text-fg-3">{fmtDate(new Date(), 'EEEE, d MMMM')}</p>
         <h1 className="mt-0.5 text-[1.75rem] font-semibold leading-tight tracking-tight">{greeting()}{firstName ? `, ${firstName}` : ''}</h1>
+        {church.welcomeMessage && <p className="mt-1 text-[15px] text-fg-2">{church.welcomeMessage}</p>}
       </header>
+
+      {!hasProfile && (
+        <div className="relative mb-4 overflow-hidden rounded-3xl border border-gold-200/70 bg-[linear-gradient(135deg,var(--color-gold-50),transparent)] p-5 dark:border-gold-500/20 dark:bg-[linear-gradient(135deg,rgb(201_154_46/0.12),transparent)]">
+          <div className="flex items-start gap-4">
+            <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-gold-500 text-white"><UserRoundPlus className="size-5" /></span>
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold">You are welcome here!</p>
+              <p className="mt-0.5 text-sm text-fg-2">Explore freely — no account needed. Introduce yourself in 30 seconds so we can welcome you, pray with you and keep you updated.</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button size="sm" onClick={() => void requireProfile()}>Introduce yourself</Button>
+                <Link to="/login" className="inline-flex h-8 items-center rounded-lg px-3 text-sm font-medium text-fg-2 hover:bg-surface/60">I have an account</Link>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {church.livestreamUrl && (
+        <a href={church.livestreamUrl} target="_blank" rel="noreferrer" className="mb-4 flex items-center gap-3 rounded-2xl border border-danger/20 bg-danger-soft px-4 py-3">
+          <span className="relative grid size-10 place-items-center rounded-xl bg-danger text-white"><Radio className="size-5" /><span className="absolute -right-0.5 -top-0.5 size-2.5 animate-ping rounded-full bg-white" /></span>
+          <span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-danger">Watch online</span><span className="block text-xs text-fg-2">Join the service live from anywhere</span></span>
+          <ChevronRight className="size-5 text-danger" />
+        </a>
+      )}
 
       {liveToday.map((s) => (
         <Link key={s.id} to={`/checkin/${s.id}`} className="mb-4 flex items-center gap-3 rounded-2xl border border-success/25 bg-success-soft px-4 py-3">
@@ -169,12 +193,20 @@ export default function Home() {
         </>
       )}
 
-      <div className="card mt-8 flex items-center gap-4 p-5">
-        <Sparkles className="size-6 shrink-0 text-gold-500" />
-        <div className="min-w-0 flex-1">
-          <p className="font-semibold">{church.serviceTimes}</p>
-          <p className="text-sm text-fg-3">{church.address || church.name}</p>
+      <div className="card mt-8 p-5">
+        <div className="flex items-center gap-4">
+          <Sparkles className="size-6 shrink-0 text-gold-500" />
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-semibold uppercase tracking-wider text-fg-3">Plan your visit</p>
+            <p className="mt-0.5 font-semibold">{church.serviceTimes}</p>
+            <p className="text-sm text-fg-3">{church.address || church.name}</p>
+          </div>
         </div>
+        {(church.address || church.gpsAddress) && (
+          <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(church.gpsAddress || church.address || church.name)}`} target="_blank" rel="noreferrer" className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-accent hover:underline dark:text-brand-300">
+            <MapPin className="size-4" /> Get directions
+          </a>
+        )}
       </div>
     </MemberPage>
   );

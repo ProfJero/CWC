@@ -1,26 +1,43 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import * as Popover from '@radix-ui/react-popover';
 import { Bell, BellOff } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
-import { useNotificationsFeed } from '@/lib/queries';
+import { useNotificationReads, useNotificationsFeed } from '@/lib/queries';
+import { rpc } from '@/lib/db';
+import type { AppNotification } from '@/lib/types';
 import { relative, toDate } from '@/lib/format';
 import { useLocalState } from '@/lib/hooks';
 import { cn } from '@/lib/utils';
 import { EmptyState } from './ui/feedback';
 
 export function useUnreadNotifications() {
-  const { user } = useAuth();
-  const { data } = useNotificationsFeed(user?.uid);
+  const { user, can, permissions } = useAuth();
+  const { data: raw } = useNotificationsFeed(user?.uid, can('messaging.push'));
+  // Broadcasters can read everyone's notifications; only show them what is for them.
+  const data = useMemo(
+    () => raw.filter((n) => n.audience === 'all' || (n.audience === 'user' && n.targetUid === user?.uid) || (n.audience === 'perm' && !!n.targetPerm && permissions.includes(n.targetPerm))),
+    [raw, user?.uid, permissions],
+  );
+  const { data: reads } = useNotificationReads(user?.uid);
   const [seenAt, setSeenAt] = useLocalState<number>(`cwc-notif-seen-${user?.uid ?? 'anon'}`, 0);
-  const unread = useMemo(() => data.filter((n) => (toDate(n.createdAt)?.getTime() ?? 0) > seenAt).length, [data, seenAt]);
-  return { items: data, unread, markSeen: () => setSeenAt(Date.now()), seenAt };
+  const readIds = useMemo(() => new Set(reads.map((r) => r.notificationId)), [reads]);
+  const isUnread = useCallback(
+    (n: AppNotification) => (user ? !readIds.has(n.id) : (toDate(n.createdAt)?.getTime() ?? 0) > seenAt),
+    [user, readIds, seenAt],
+  );
+  const unread = useMemo(() => data.filter(isUnread).length, [data, isUnread]);
+  const markSeen = useCallback(() => {
+    setSeenAt(Date.now());
+    if (user && unread > 0) void rpc('mark_notifications_read', { p_ids: null }, ['notification_reads']).catch(() => {});
+  }, [user, unread, setSeenAt]);
+  return { items: data, unread, markSeen, seenAt, isUnread };
 }
 
 export function NotificationBell({ className }: { className?: string }) {
-  const { items, unread, markSeen, seenAt } = useUnreadNotifications();
+  const { items, unread, markSeen, isUnread } = useUnreadNotifications();
   const [open, setOpen] = useState(false);
-  const [snapshotSeen, setSnapshotSeen] = useState(seenAt);
+  const [snapshot, setSnapshot] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const onMsg = (e: MessageEvent) => e.data?.type === 'PUSH_RECEIVED' && navigator.vibrate?.(30);
@@ -41,7 +58,7 @@ export function NotificationBell({ className }: { className?: string }) {
       onOpenChange={(o) => {
         setOpen(o);
         if (o) {
-          setSnapshotSeen(seenAt);
+          setSnapshot(new Set(items.filter(isUnread).map((n) => n.id)));
           markSeen();
         }
       }}
@@ -76,7 +93,7 @@ export function NotificationBell({ className }: { className?: string }) {
             ) : (
               <ul className="divide-y divide-line">
                 {items.slice(0, 12).map((n) => {
-                  const isNew = (toDate(n.createdAt)?.getTime() ?? 0) > snapshotSeen;
+                  const isNew = snapshot.has(n.id);
                   return (
                     <li key={n.id}>
                       <Link to={n.url || '/notifications'} onClick={() => setOpen(false)} className="flex gap-3 px-4 py-3 hover:bg-surface-2">

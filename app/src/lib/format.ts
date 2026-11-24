@@ -1,4 +1,3 @@
-import type { Timestamp } from 'firebase/firestore';
 import { format, formatDistanceToNowStrict, isToday, isTomorrow, isYesterday, parseISO, differenceInYears } from 'date-fns';
 
 export const LOCALE = 'en-GH';
@@ -22,12 +21,14 @@ export function pct(n: number, digits = 0) {
   return `${(n * 100).toFixed(digits)}%`;
 }
 
-export function toDate(v: Timestamp | Date | string | number | null | undefined): Date | null {
+export function toDate(v: Date | string | number | null | undefined): Date | null {
   if (v == null || v === '') return null;
   if (v instanceof Date) return v;
   if (typeof v === 'number') return new Date(v);
-  if (typeof v === 'string') return v.length <= 10 ? parseISO(v) : new Date(v);
-  if (typeof (v as Timestamp).toDate === 'function') return (v as Timestamp).toDate();
+  if (typeof v === 'string') {
+    const d = v.length <= 10 ? parseISO(v) : new Date(v);
+    return isNaN(d.getTime()) ? null : d;
+  }
   return null;
 }
 

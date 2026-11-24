@@ -1,4 +1,5 @@
-import { useDocument } from './db';
+import { supabase } from './supabase';
+import { audit, invalidate, useSingle } from './db';
 import { CHURCH_DEFAULTS } from '@/config';
 import type { ChurchSettings } from './types';
 
@@ -18,9 +19,20 @@ export const DEFAULT_SETTINGS: ChurchSettings = {
   birthdaySms: 'Happy birthday {first_name|Beloved}! Christian Worship Centre celebrates you today. May the Lord bless you and keep you. Num 6:24',
   autoBirthdaySms: false,
   autoWelcomeSms: false,
+  autoEventReminders: true,
+  autoDevotionalPush: false,
+  allowGuests: true,
 };
 
 export function useChurch(): ChurchSettings & { loading: boolean } {
-  const { data, loading } = useDocument<ChurchSettings>('settings/church');
-  return { ...DEFAULT_SETTINGS, ...(data ?? {}), loading };
+  const { data, loading } = useSingle<{ data: Partial<ChurchSettings> }>('settings:church', 'settings', () => supabase.from('settings').select('data').eq('id', 'church').maybeSingle());
+  return { ...DEFAULT_SETTINGS, ...(data?.data ?? {}), loading };
+}
+
+export async function saveChurchSettings(s: ChurchSettings) {
+  const { data, error } = await supabase.from('settings').update({ data: s }).eq('id', 'church').select('id');
+  if (error) throw new Error(error.message);
+  if (!data?.length) throw new Error('You don’t have permission to change church settings.');
+  invalidate('settings');
+  void audit('update', 'settings', 'church', 'Updated church settings');
 }

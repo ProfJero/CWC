@@ -68,7 +68,7 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           if (/node_modules\/(react|react-dom|scheduler|react-router)\//.test(id)) return 'react';
-          if (/node_modules\/(@firebase|firebase)\//.test(id)) return 'firebase';
+          if (/node_modules\/@supabase\//.test(id)) return 'supabase';
           return undefined;
         },
         chunkFileNames(chunk) {

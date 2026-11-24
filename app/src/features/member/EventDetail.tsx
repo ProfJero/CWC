@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router';
 import { CalendarDays, MapPin, Clock, CalendarPlus, Share2, Check, Users, Minus, Plus, ExternalLink } from 'lucide-react';
-import { doc, increment, serverTimestamp, writeBatch } from 'firebase/firestore';
 import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth';
 import { useEvent, useMyRsvp } from '@/lib/queries';
-import { db } from '@/lib/db';
+import { insertOnly, invalidate } from '@/lib/db';
+import { supabase } from '@/lib/supabase';
+import { useRequireProfile } from '@/components/profile-prompt';
 import { fmtDate, fmtTime, num } from '@/lib/format';
-import { cld } from '@/lib/cloudinary';
+import { cld } from '@/lib/media';
 import { downloadBlob, icsFor, shareOrCopy } from '@/lib/files';
 import { Button, buttonClass } from '@/components/ui/button';
 import { EmptyState, FullPageLoader } from '@/components/ui/feedback';
@@ -17,6 +18,7 @@ import { MemberPage } from './ui';
 export default function EventDetail() {
   const { id } = useParams();
   const { user, profile } = useAuth();
+  const requireProfile = useRequireProfile();
   const { data: e, loading } = useEvent(id);
   const { data: rsvp } = useMyRsvp(id, user?.uid);
   const [guests, setGuests] = useState(0);
@@ -34,19 +36,21 @@ export default function EventDetail() {
   const full = !!e.capacity && (e.rsvpCount ?? 0) >= e.capacity && !going;
 
   async function toggle() {
-    if (!user) return;
+    if (!going && !(await requireProfile('save your seat'))) return;
+    const { data: s } = await supabase.auth.getSession();
+    const uid = s.session?.user.id;
+    if (!uid) return;
     setBusy(true);
     try {
-      const b = writeBatch(db);
-      const ref = doc(db, 'events', e!.id, 'rsvps', user.uid);
+      // The database keeps the RSVP count and enforces capacity.
       if (going) {
-        b.delete(ref);
-        b.update(doc(db, 'events', e!.id), { rsvpCount: increment(-1) });
+        const { error } = await supabase.from('rsvps').delete().eq('event_id', e!.id).eq('uid', uid);
+        if (error) throw new Error(error.message);
+        invalidate('rsvps', 'events');
       } else {
-        b.set(ref, { uid: user.uid, name: profile?.fullName ?? 'Member', phone: profile?.phone ?? '', guests, createdAt: serverTimestamp() });
-        b.update(doc(db, 'events', e!.id), { rsvpCount: increment(1) });
+        const name = (await supabase.from('users').select('full_name, phone').eq('id', uid).maybeSingle()).data;
+        await insertOnly('rsvps', { eventId: e!.id, name: name?.full_name || profile?.fullName || 'Member', phone: name?.phone ?? '', guests });
       }
-      await b.commit();
       setOptimistic(!going);
       toast.success(going ? 'RSVP cancelled' : 'You’re going! We’ve saved your spot.');
     } catch (err) {

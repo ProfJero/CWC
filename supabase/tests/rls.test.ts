@@ -94,6 +94,15 @@ describe('accounts & role seeding', () => {
     expect(g).toEqual({ email: '', is_guest: true });
   });
 
+  it('picks up server flags that Supabase Auth writes after the insert', async () => {
+    const u = await makeUser('233200000000@phone.cwc.app');
+    await sys(`update auth.users set raw_app_meta_data = raw_app_meta_data || '{"is_guest": true}' where id = $1`, [u.id]);
+    const s = await makeUser('newstaff@cwc.test');
+    await sys(`update auth.users set raw_app_meta_data = raw_app_meta_data || '{"must_change_password": true}' where id = $1`, [s.id]);
+    expect((await sys(`select is_guest from public.users where id = $1`, [u.id]))[0].is_guest).toBe(true);
+    expect((await sys(`select must_change_password from public.users where id = $1`, [s.id]))[0].must_change_password).toBe(true);
+  });
+
   it('blocks clients from creating or deleting account rows directly', async () => {
     await denied(as(member, `insert into public.users (id, role) values (gen_random_uuid(), 'super_admin')`));
     await denied(as(admin, `delete from public.users where id = '${member2!.id}'`));

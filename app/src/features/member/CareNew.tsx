@@ -2,9 +2,9 @@ import { useState, type FormEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { Lock, Globe, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { useAuth } from '@/lib/auth';
-import { db } from '@/lib/db';
+import { createOrQueue } from '@/lib/db';
+import { useRequireProfile } from '@/components/profile-prompt';
 import { isoDate } from '@/lib/format';
 import { useOnline } from '@/lib/pwa';
 import { cn } from '@/lib/utils';
@@ -27,6 +27,8 @@ export default function CareNew() {
   const navigate = useNavigate();
   const online = useOnline();
   const { user, profile } = useAuth();
+  const requireProfile = useRequireProfile();
+  const [queued, setQueued] = useState(false);
   const type = (params.get('type') as CareType) || 'prayer';
   const copy = COPY[type] ?? COPY.prayer;
   const [subject, setSubject] = useState('');
@@ -41,26 +43,30 @@ export default function CareNew() {
 
   async function submit(e: FormEvent) {
     e.preventDefault();
-    if (!details.trim() || !user) return;
+    if (!details.trim()) return;
+    if (!user && !online) return toast.error('You’re offline. Connect once to introduce yourself, then requests can be sent offline.');
+    if (!(await requireProfile(type === 'thanksgiving' ? 'share your testimony' : 'pray with you and follow up'))) return;
     setBusy(true);
     try {
-      const name = profile?.fullName ?? 'Member';
+      const { supabase } = await import('@/lib/supabase');
+      const me = (await supabase.auth.getUser()).data.user;
+      const row = me ? (await supabase.from('users').select('full_name, phone, member_id').eq('id', me.id).maybeSingle()).data : null;
+      const name = row?.full_name || profile?.fullName || 'Member';
+      let wasQueued: boolean;
       if (type === 'thanksgiving') {
-        const p = addDoc(collection(db, 'testimonies'), { uid: user.uid, name, title: subject.trim() || 'My testimony', body: details.trim(), status: 'pending', createdAt: serverTimestamp() });
-        if (online) await p;
+        wasQueued = await createOrQueue('testimonies', { name, title: subject.trim() || 'My testimony', body: details.trim() });
       } else {
-        const p = addDoc(collection(db, 'care_requests'), {
-          type, uid: user.uid, memberId: profile?.memberId ?? null, name,
-          phone: visibility === 'public' ? '' : phone,
+        // Offline: kept on this phone and sent automatically when the connection returns.
+        wasQueued = await createOrQueue('care_requests', {
+          type, memberId: row?.member_id ?? profile?.memberId ?? null, name,
+          phone: visibility === 'public' ? '' : phone || row?.phone || '',
           subject: subject.trim(), details: details.trim(),
           visibility: type === 'prayer' ? visibility : 'private',
           anonymous: type === 'prayer' && visibility === 'public' ? anonymous : false,
-          preferredDate, location, status: 'new', assignedTo: null, assignedName: '', responses: [], prayedCount: 0,
-          createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
+          preferredDate, location,
         });
-        // Offline: Firestore queues the write and sends it when the connection returns.
-        if (online) await p;
       }
+      setQueued(wasQueued);
       setDone(true);
     } catch (err) {
       toast.error((err as Error).message);
@@ -75,7 +81,7 @@ export default function CareNew() {
         <Card className="mx-auto max-w-md p-8 text-center">
           <CheckCircle2 className="mx-auto size-12 text-success" />
           <h1 className="mt-4 text-xl font-semibold">{type === 'thanksgiving' ? 'Thank you for sharing!' : 'We’ve received your request'}</h1>
-          <p className="mt-2 text-sm text-fg-3">{!online ? 'You’re offline — it will be sent automatically when you reconnect. ' : ''}{type === 'thanksgiving' ? 'Your testimony will appear once reviewed.' : type === 'prayer' ? 'We are praying with you. You’ll get a notification when a pastor replies.' : 'A pastor will reach out to you soon.'}</p>
+          <p className="mt-2 text-sm text-fg-3">{queued ? 'You’re offline — it will be sent automatically when you reconnect. ' : ''}{type === 'thanksgiving' ? 'Your testimony will appear once reviewed.' : type === 'prayer' ? 'We are praying with you. You’ll get a notification when a pastor replies.' : 'A pastor will reach out to you soon.'}</p>
           <div className="mt-6 flex flex-col gap-2">
             <Button onClick={() => navigate('/care')}>Done</Button>
             {type === 'prayer' && <Button variant="ghost" onClick={() => navigate('/care/wall')}>Visit the prayer wall</Button>}

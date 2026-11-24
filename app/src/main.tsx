@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import '@/styles/index.css';
 import { App } from './App';
 import { registerServiceWorker } from './register-sw';
+import { installErrorReporting } from '@/lib/errors';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -11,6 +12,7 @@ createRoot(document.getElementById('root')!).render(
 );
 
 registerServiceWorker();
+installErrorReporting();
 
 console.log(
   '%c CWC %c Crafted by ProfJero — Building Solutions. Empowering Lives. ',

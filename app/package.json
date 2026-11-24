@@ -1,7 +1,7 @@
 {
   "name": "cwc-app",
   "private": true,
-  "version": "1.0.0",
+  "version": "2.0.0",
   "type": "module",
   "author": "ProfJero",
   "scripts": {
@@ -27,7 +27,6 @@
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
     "date-fns": "^4.4.0",
-    "firebase": "^12.19.0",
     "lucide-react": "^0.577.0",
     "papaparse": "^5.7.0",
     "qrcode": "^1.5.4",

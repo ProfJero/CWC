@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, Users, UsersRound, Route, CalendarCheck2, HandCoins, CalendarDays, Newspaper, HeartHandshake,
-  MessageSquareText, BarChart3, ShieldCheck, Settings, ScrollText, Home, BookOpen, HandHeart, User, PlaySquare, type LucideIcon,
+  MessageSquareText, BarChart3, ShieldCheck, Settings, ScrollText, Activity, Home, BookOpen, HandHeart, User, PlaySquare, type LucideIcon,
 } from 'lucide-react';
 import type { Permission } from '@/lib/permissions';
 
@@ -46,6 +46,7 @@ export const ADMIN_NAV: { label: string; items: NavItem[] }[] = [
       { to: '/admin/users', label: 'Users & roles', icon: ShieldCheck, permission: 'users.manage' },
       { to: '/admin/settings', label: 'Settings', icon: Settings, permission: 'settings.manage' },
       { to: '/admin/audit', label: 'Activity log', icon: ScrollText, permission: 'audit.view' },
+      { to: '/admin/developer', label: 'Developer', icon: Activity, permission: 'system.monitor' },
     ],
   },
 ];

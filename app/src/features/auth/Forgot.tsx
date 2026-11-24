@@ -27,7 +27,7 @@ export default function Forgot() {
       setSent(true);
     } catch (err) {
       // Don't reveal whether an account exists
-      if ((err as { code?: string }).code === 'auth/user-not-found') setSent(true);
+      if ((err as { code?: string }).code === 'user_not_found') setSent(true);
       else setError(authErrorMessage(err));
     } finally {
       setBusy(false);

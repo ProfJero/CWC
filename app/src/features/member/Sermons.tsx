@@ -4,7 +4,7 @@ import { PlaySquare, Headphones } from 'lucide-react';
 import { usePublishedSermons } from '@/lib/queries';
 import { fmtDate } from '@/lib/format';
 import { youtubeId } from '@/lib/utils';
-import { cld } from '@/lib/cloudinary';
+import { cld } from '@/lib/media';
 import { SearchInput, Select } from '@/components/ui/input';
 import { EmptyState, SkeletonCards } from '@/components/ui/feedback';
 import { CwcLogo } from '@/components/brand';

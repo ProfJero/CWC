@@ -2,29 +2,30 @@ import { useState } from 'react';
 import { BellRing, Send } from 'lucide-react';
 import { toast } from 'sonner';
 import { useSentNotifications, usePublishedEvents, usePublishedDevotionals } from '@/lib/queries';
-import { createDoc, patchDoc } from '@/lib/db';
-import { sendPush } from '@/lib/push';
-import { apiConfigured } from '@/lib/api';
+import { invalidate } from '@/lib/db';
+import { notify } from '@/lib/push';
 import { isoDate, relative } from '@/lib/format';
 import type { AppNotification } from '@/lib/types';
 import { Card, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Field, Select, Textarea, TextField } from '@/components/ui/input';
-import { EmptyState, Banner } from '@/components/ui/feedback';
+import { EmptyState } from '@/components/ui/feedback';
 import { Badge } from '@/components/ui/badge';
 
-/** Broadcast to every member's app: saved to the in-app inbox and pushed to devices. */
+/**
+ * Broadcast to the member app: saved to everyone's in-app inbox; the server pushes it to
+ * every device with notifications on (respecting each person's preferences).
+ */
 export async function broadcast(n: { title: string; body: string; url?: string; kind: AppNotification['kind']; audience?: 'all' | string; image?: string }) {
-  const id = await createDoc('notifications', { title: n.title, body: n.body, url: n.url ?? '/notifications', audience: n.audience ?? 'all', kind: n.kind, push: null });
-  if (!apiConfigured()) return { id, push: null };
-  try {
-    const res = await sendPush({ title: n.title, body: n.body, url: n.url, image: n.image, audience: n.audience && n.audience !== 'all' ? { uids: [n.audience] } : 'all', tag: id });
-    await patchDoc('notifications', id, { push: { sent: res.sent, failed: res.failed } });
-    return { id, push: res };
-  } catch (e) {
-    console.warn('[cwc] push failed', e);
-    return { id, push: null };
-  }
+  await notify({
+    title: n.title,
+    body: n.body,
+    url: n.url ?? '/notifications',
+    imageUrl: n.image,
+    kind: n.kind as 'announcement',
+    to: n.audience && n.audience !== 'all' ? { uid: n.audience } : 'all',
+  });
+  invalidate('notifications');
 }
 
 export function PushPanel() {
@@ -40,8 +41,8 @@ export function PushPanel() {
     if (!title.trim() || !body.trim()) return;
     setBusy(true);
     try {
-      const r = await broadcast({ title: title.trim(), body: body.trim(), url: link, kind: 'announcement' });
-      toast.success(r.push ? `Delivered to ${r.push.sent} devices` : 'Posted to the in-app inbox');
+      await broadcast({ title: title.trim(), body: body.trim(), url: link, kind: 'announcement' });
+      toast.success('Sent — it’s in everyone’s inbox and on its way to their devices');
       setTitle('');
       setBody('');
     } catch (e) {
@@ -56,7 +57,6 @@ export function PushPanel() {
       <Card className="lg:col-span-2">
         <CardHeader title="Send a notification" description="Free and instant to everyone who installed the app." icon={<BellRing />} />
         <div className="space-y-4 px-5 pb-5">
-          {!apiConfigured() && <Banner tone="info">Without the Worker, notifications still appear in members’ in-app inbox.</Banner>}
           <TextField label="Title" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={60} placeholder="e.g. Service starts in 1 hour" />
           <Field label="Message" hint={`${body.length}/180`}>
             <Textarea rows={3} value={body} onChange={(e) => setBody(e.target.value.slice(0, 180))} />
@@ -89,7 +89,7 @@ export function PushPanel() {
                 <p className="mt-0.5 line-clamp-2 text-[13px] text-fg-3">{n.body}</p>
                 <div className="mt-1.5 flex gap-1.5">
                   <Badge>{n.audience === 'all' ? 'Everyone' : 'One person'}</Badge>
-                  {n.push && <Badge tone="success">{n.push.sent} devices</Badge>}
+                  {n.push ? <Badge tone="success">{n.push.sent} devices</Badge> : n.sendPush !== false && <Badge tone="info">Delivering…</Badge>}
                 </div>
               </li>
             ))}

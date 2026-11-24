@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router';
 import { Plus, CalendarDays, MapPin, Users } from 'lucide-react';
 import { useEvents } from '@/lib/queries';
 import { fmtDate, fmtTime, num } from '@/lib/format';
-import { cld } from '@/lib/cloudinary';
+import { cld } from '@/lib/media';
 import { Page, PageHeader } from '@/components/ui/page';
 import { Button } from '@/components/ui/button';
 import { Segmented } from '@/components/ui/tabs';

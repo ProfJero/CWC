@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { ImagePlus, Loader2, Trash2, Link2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { cloudinaryConfigured, cld, uploadToCloudinary, type UploadFolder } from '@/lib/cloudinary';
+import { cloudinaryConfigured, cld, uploadToCloudinary, type UploadFolder } from '@/lib/media';
 import { cn } from '@/lib/utils';
 import { Button } from './ui/button';
 import { Input } from './ui/input';

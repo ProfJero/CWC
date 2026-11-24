@@ -62,7 +62,7 @@ export function PersonForm({
   onOpenChange: (o: boolean) => void;
   member?: Member | null;
   defaults?: Partial<MemberInput>;
-  onSaved?: (id: string) => void;
+  onSaved?: (id: string, name?: string) => void;
 }) {
   const church = useChurch();
   const { data: groups } = useGroups();
@@ -133,7 +133,7 @@ export function PersonForm({
           }
         }
       }
-      onSaved?.(id);
+      onSaved?.(id, payload.fullName);
       onOpenChange(false);
     } catch (err) {
       toast.error((err as Error).message);

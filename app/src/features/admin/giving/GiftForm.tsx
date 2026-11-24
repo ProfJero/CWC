@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { increment } from 'firebase/firestore';
 import { Modal } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Field, Input, Select, Textarea, TextField, Switch } from '@/components/ui/input';
 import { MemberPicker } from '@/components/member-picker';
-import { createDoc, getActor, patchDoc } from '@/lib/db';
+import { createDoc, getActor } from '@/lib/db';
 import { cedis, fmtDate, isoDate } from '@/lib/format';
 import { formatPhone } from '@/lib/phone';
 import { receiptNumber } from '@/lib/utils';
@@ -82,11 +81,9 @@ export function GiftForm({ open, onOpenChange, presetMember }: { open: boolean; 
         receiptNo: receiptNumber(church.shortName || 'CWC', new Date(date)),
         pledgeId: pledge?.id ?? null,
         campaignId: pledge?.campaignId ?? (campaignId || null),
-        recordedBy: getActor()?.uid,
         recordedByName: getActor()?.name,
       };
       await createDoc('gifts', gift, { audit: `Recorded ${gift.category} ${cedis(gift.amount)} from ${gift.memberName}` });
-      if (pledge) await patchDoc('pledges', pledge.id, { paid: increment(gift.amount) });
       toast.success(`${cedis(gift.amount)} recorded · ${gift.receiptNo}`, { action: { label: 'Print receipt', onClick: () => printReceipt(gift, church) } });
 
       const phone = who?.member?.phone;

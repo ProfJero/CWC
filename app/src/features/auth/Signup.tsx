@@ -16,12 +16,12 @@ export default function Signup() {
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
   const phoneError = touched && form.phone && !isValidPhone(form.phone) ? 'Enter a valid phone number, e.g. 024 123 4567' : '';
-  const pwError = touched && form.password && form.password.length < 6 ? 'Use at least 6 characters' : '';
+  const pwError = touched && form.password && form.password.length < 8 ? 'Use at least 8 characters' : '';
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     setTouched(true);
-    if (!form.fullName.trim() || !isValidPhone(form.phone) || form.password.length < 6) return;
+    if (!form.fullName.trim() || !isValidPhone(form.phone) || form.password.length < 8) return;
     setError('');
     setBusy(true);
     try {

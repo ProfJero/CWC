@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ScrollText } from 'lucide-react';
 import { useAuditLogs } from '@/lib/queries';
-import { fmtDateTime, relative } from '@/lib/format';
+import { fmtDateTime, relative , toDate } from '@/lib/format';
 import { titleCase } from '@/lib/utils';
 import { downloadCsv } from '@/lib/files';
 import type { AuditLog } from '@/lib/types';
@@ -25,7 +25,7 @@ export default function Audit() {
     { key: 'who', header: 'Who', cell: (l) => <span className="flex items-center gap-2"><Avatar name={l.byName} size="xs" /><span className="whitespace-nowrap font-medium">{l.byName}</span></span> },
     { key: 'what', header: 'What', cell: (l) => <span className="text-fg-2">{l.summary}</span> },
     { key: 'action', header: 'Action', hideBelow: 'md', cell: (l) => <Badge tone={TONE[l.action] ?? 'neutral'}>{titleCase(l.action)}</Badge> },
-    { key: 'when', header: 'When', sort: (l) => l.at?.toMillis?.() ?? 0, cell: (l) => <span className="whitespace-nowrap text-fg-3" title={fmtDateTime(l.at)}>{relative(l.at)}</span> },
+    { key: 'when', header: 'When', sort: (l) => toDate(l.at)?.getTime() ?? 0, cell: (l) => <span className="whitespace-nowrap text-fg-3" title={fmtDateTime(l.at)}>{relative(l.at)}</span> },
   ];
   return (
     <Page>

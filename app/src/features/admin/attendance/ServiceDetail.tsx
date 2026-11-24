@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { Minus, Plus, QrCode, Lock, Unlock, Pencil, UserPlus, Check, X, Trash2, Download, CalendarCheck2 } from 'lucide-react';
-import { deleteDoc, doc, increment, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
 import QRCode from 'qrcode';
 import { toast } from 'sonner';
 import { useMembers, useService, useServiceAttendance } from '@/lib/queries';
-import { db, getActor, patchDoc, removeDoc } from '@/lib/db';
+import { insertOnly, invalidate, patchDoc, removeDoc, rpc } from '@/lib/db';
+import { supabase } from '@/lib/supabase';
 import { formatPhone } from '@/lib/phone';
 import { fmtDate, fmtTime, num } from '@/lib/format';
 import { downloadCsv } from '@/lib/files';
@@ -24,7 +24,6 @@ import { useConfirm } from '@/components/ui/confirm';
 import { matchMember } from '@/components/member-picker';
 import { ServiceForm } from './ServiceForm';
 import { PersonForm } from '../people/shared';
-import { useAuth } from '@/lib/auth';
 
 const COUNTERS: { key: keyof Service['headcount']; label: string }[] = [
   { key: 'men', label: 'Men' },
@@ -37,9 +36,9 @@ export default function ServiceDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const confirm = useConfirm();
-  const { can } = useAuth();
-  const { data: s, loading } = useService(id);
-  const { data: records } = useServiceAttendance(id);
+  // Live while open: ushers on several phones see each other's counts and check-ins.
+  const { data: s, loading } = useService(id, true);
+  const { data: records } = useServiceAttendance(id, true);
   const { data: members } = useMembers();
   const [q, setQ] = useState('');
   const [edit, setEdit] = useState(false);
@@ -49,12 +48,6 @@ export default function ServiceDetail() {
 
   const checkedIn = useMemo(() => new Set(records.map((r) => r.memberId)), [records]);
 
-  // Keep the stored count in step with live check-ins (self check-ins can't update it themselves).
-  useEffect(() => {
-    if (s && records.length !== (s.checkins ?? 0) && can('attendance.manage')) {
-      void updateDoc(doc(db, 'services', s.id), { checkins: records.length }).catch(() => {});
-    }
-  }, [records.length, s, can]);
 
   const results = useMemo(() => {
     if (!q.trim()) return [];
@@ -69,29 +62,25 @@ export default function ServiceDetail() {
   async function bump(key: keyof Service['headcount'], by: number) {
     if ((h[key] ?? 0) + by < 0) return;
     navigator.vibrate?.(8);
-    await updateDoc(doc(db, 'services', s!.id), { [`headcount.${key}`]: increment(by) });
+    await rpc('bump_headcount', { p_service: s!.id, p_key: key, p_by: by }, ['services']);
   }
 
   async function checkIn(m: Member) {
     if (checkedIn.has(m.id)) return toast.info(`${m.firstName} is already checked in`);
     navigator.vibrate?.(15);
-    await setDoc(doc(db, 'attendance', `${s!.id}_${m.id}`), {
-      serviceId: s!.id,
-      serviceType: s!.type,
-      date: s!.date,
-      memberId: m.id,
-      memberName: m.fullName,
-      method: 'manual',
-      checkedInAt: serverTimestamp(),
-      by: getActor()?.uid ?? null,
-    });
-    if (m.membershipStatus === 'first_timer') await updateDoc(doc(db, 'services', s!.id), { firstTimers: increment(1) }).catch(() => {});
+    try {
+      await insertOnly('attendance', { serviceId: s!.id, serviceType: s!.type, date: s!.date, memberId: m.id, memberName: m.fullName, method: 'manual' });
+    } catch (e) {
+      if ((e as { code?: string }).code !== '23505') throw e; // already checked in on another device
+    }
     toast.success(`${m.fullName} checked in`);
     setQ('');
   }
 
   async function undo(memberId: string) {
-    await deleteDoc(doc(db, 'attendance', `${s!.id}_${memberId}`));
+    const { error } = await supabase.from('attendance').delete().eq('service_id', s!.id).eq('member_id', memberId);
+    if (error) return toast.error(error.message);
+    invalidate('attendance', 'services');
   }
 
   async function toggleOpen() {
@@ -201,7 +190,7 @@ export default function ServiceDetail() {
             ) : (
               <ul className="max-h-[520px] divide-y divide-line overflow-y-auto">
                 {[...records]
-                  .sort((a, b) => ((b.checkedInAt?.toMillis?.() ?? 0) - (a.checkedInAt?.toMillis?.() ?? 0)))
+                  .sort((a, b) => String(b.checkedInAt ?? '').localeCompare(String(a.checkedInAt ?? '')))
                   .map((r) => (
                     <li key={r.id} className="flex items-center gap-3 px-5 py-2.5">
                       <Avatar name={r.memberName} size="sm" />
@@ -224,11 +213,10 @@ export default function ServiceDetail() {
         open={newPerson}
         onOpenChange={setNewPerson}
         defaults={{ membershipStatus: 'first_timer', firstName: q.split(' ')[0] ?? '', lastName: q.split(' ').slice(1).join(' ') }}
-        onSaved={async (mid) => {
-          await setDoc(doc(db, 'attendance', `${s.id}_${mid}`), { serviceId: s.id, serviceType: s.type, date: s.date, memberId: mid, memberName: 'First-timer', method: 'manual', checkedInAt: serverTimestamp() });
-          await updateDoc(doc(db, 'services', s.id), { firstTimers: increment(1), 'headcount.visitors': increment(1) });
-          const m = members.find((x) => x.id === mid);
-          if (m) await updateDoc(doc(db, 'attendance', `${s.id}_${mid}`), { memberName: m.fullName });
+        onSaved={async (mid, name) => {
+          // The database counts the check-in (and the first-timer) for this service.
+          await insertOnly('attendance', { serviceId: s.id, serviceType: s.type, date: s.date, memberId: mid, memberName: name || 'First-timer', method: 'manual' });
+          await rpc('bump_headcount', { p_service: s.id, p_key: 'visitors', p_by: 1 }, ['services']);
           setQ('');
         }}
       />

@@ -2,13 +2,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { Plus, CalendarCheck2, UserX, Send, Route, Radio } from 'lucide-react';
 import { toast } from 'sonner';
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth';
 import { useMembers, useServices, useFollowUps } from '@/lib/queries';
 import { attendanceByDate, serviceTotal, ACTIVE_STATUSES, change } from '@/lib/stats';
 import { fmtDate, num, isoDate } from '@/lib/format';
 import { formatPhone } from '@/lib/phone';
-import { createDoc, db } from '@/lib/db';
+import { createMany } from '@/lib/db';
 import { sum } from '@/lib/utils';
 import type { Member, Service } from '@/lib/types';
 import { Page, PageHeader } from '@/components/ui/page';
@@ -163,9 +163,8 @@ function Absentees({ services }: { services: Service[] }) {
     if (!recentSundays.length) return setSeen(new Set());
     setSeen(null);
     const since = recentSundays[recentSundays.length - 1];
-    getDocs(query(collection(db, 'attendance'), where('date', '>=', since)))
-      .then((snap) => setSeen(new Set(snap.docs.map((d) => d.data().memberId as string))))
-      .catch(() => setSeen(new Set()));
+    void supabase.from('attendance').select('member_id').gte('date', since).limit(20000)
+      .then(({ data, error }) => setSeen(error ? new Set() : new Set((data ?? []).map((d) => d.member_id as string))));
   }, [recentSundays]);
 
   const absent: Member[] = useMemo(
@@ -176,7 +175,7 @@ function Absentees({ services }: { services: Service[] }) {
 
   async function createFollowUps() {
     const todo = absent.filter((m) => !open.has(m.id));
-    for (const m of todo) await createDoc('followups', { memberId: m.id, name: m.fullName, phone: m.phone, kind: 'absentee', stage: 'new', assignedTo: null, assignedName: '', dueDate: isoDate(new Date(Date.now() + 3 * 864e5)), notes: [] });
+    await createMany('followups', todo.map((m) => ({ memberId: m.id, name: m.fullName, phone: m.phone, kind: 'absentee', stage: 'new', assignedTo: null, assignedName: '', dueDate: isoDate(new Date(Date.now() + 3 * 864e5)), notes: [] })));
     toast.success(`${todo.length} follow-ups created`, { action: { label: 'Open', onClick: () => navigate('/admin/follow-ups') } });
   }
   function sms() {
