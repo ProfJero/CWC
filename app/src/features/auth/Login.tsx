@@ -1,6 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { useState, type FormEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 import { Eye, EyeOff } from 'lucide-react';
 import { authErrorMessage, signIn } from '@/lib/auth';
@@ -18,12 +16,6 @@ export default function Login() {
   const [error, setError] = useState('');
   const [params] = useSearchParams();
   const navigate = useNavigate();
-  const [firstRun, setFirstRun] = useState(false);
-  useEffect(() => {
-    getDoc(doc(db, 'settings', 'bootstrap'))
-      .then((s) => setFirstRun(!s.exists()))
-      .catch(() => {});
-  }, []);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -44,11 +36,6 @@ export default function Login() {
     <div className="animate-slide-up">
       <h1 className="text-2xl font-semibold tracking-tight">Welcome back</h1>
       <p className="mt-1.5 text-sm text-fg-3">Sign in with your email or phone number.</p>
-      {firstRun && (
-        <Banner tone="brand" className="mt-6" action={<Link to="/setup" className="text-sm font-semibold underline">Set up</Link>}>
-          First time here? Create the administrator account for your church.
-        </Banner>
-      )}
       <form onSubmit={submit} className="mt-8 space-y-4" noValidate>
         {error && <Banner tone="danger">{error}</Banner>}
         <TextField
@@ -86,12 +73,19 @@ export default function Login() {
           Sign in
         </Button>
       </form>
-      <p className="mt-8 text-center text-sm text-fg-3">
-        New here?{' '}
-        <Link to="/signup" className="font-medium text-accent hover:underline dark:text-brand-300">
-          Create your account
-        </Link>
-      </p>
+      <div className="mt-8 space-y-3 text-center text-sm text-fg-3">
+        <p>
+          New here?{' '}
+          <Link to="/signup" className="font-medium text-accent hover:underline dark:text-brand-300">
+            Create an account
+          </Link>
+        </p>
+        <p>
+          <Link to="/" className="font-medium text-fg-2 underline-offset-4 hover:underline">
+            Continue without an account →
+          </Link>
+        </p>
+      </div>
     </div>
   );
 }

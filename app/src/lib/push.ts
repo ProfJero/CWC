@@ -1,6 +1,5 @@
-import { deleteDoc, doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { api, apiConfigured } from './api';
-import { db } from './firebase';
+import { supabase } from './supabase';
 
 export type PushState = 'unsupported' | 'denied' | 'default' | 'subscribed' | 'unsubscribed';
 
@@ -18,11 +17,6 @@ export function isStandalone() {
   return window.matchMedia?.('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true;
 }
 
-async function sha256(s: string) {
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
-  return Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, '0')).join('');
-}
-
 function b64urlToBytes(s: string) {
   const pad = '='.repeat((4 - (s.length % 4)) % 4);
   const raw = atob((s + pad).replace(/-/g, '+').replace(/_/g, '/'));
@@ -38,9 +32,10 @@ export async function getPushState(): Promise<PushState> {
   return Notification.permission === 'granted' ? 'unsubscribed' : 'default';
 }
 
-export async function enablePush(uid: string): Promise<PushState> {
+/** Works for visitors without an account too (church-wide notifications). */
+export async function enablePush(): Promise<PushState> {
   if (!pushSupported()) return 'unsupported';
-  if (!apiConfigured()) throw new Error('Notifications need the CWC API (VITE_API_URL) to be configured.');
+  if (!apiConfigured()) throw new Error('Notifications are not configured.');
   const permission = await Notification.requestPermission();
   if (permission !== 'granted') return permission === 'denied' ? 'denied' : 'default';
   const reg = await navigator.serviceWorker.ready;
@@ -49,62 +44,71 @@ export async function enablePush(uid: string): Promise<PushState> {
     const { publicKey } = await api<{ publicKey: string }>('/v1/push/public-key');
     sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64urlToBytes(publicKey) });
   }
-  await saveSubscription(uid, sub);
+  await saveSubscription(sub);
   return 'subscribed';
 }
 
-export async function saveSubscription(uid: string, sub: PushSubscription) {
+/** Stores (or re-links to the signed-in account) this device's push subscription. */
+export async function saveSubscription(sub: PushSubscription) {
   const json = sub.toJSON();
-  await setDoc(doc(db, 'push_subscriptions', await sha256(sub.endpoint)), {
-    uid,
-    endpoint: sub.endpoint,
-    keys: { p256dh: json.keys?.p256dh ?? '', auth: json.keys?.auth ?? '' },
-    userAgent: navigator.userAgent.slice(0, 200),
-    createdAt: serverTimestamp(),
+  const { error } = await supabase.rpc('subscribe_push', {
+    p_endpoint: sub.endpoint,
+    p_p256dh: json.keys?.p256dh ?? '',
+    p_auth: json.keys?.auth ?? '',
+    p_user_agent: navigator.userAgent.slice(0, 200),
   });
+  if (error) throw new Error(error.message);
 }
 
 export async function disablePush(): Promise<PushState> {
   const reg = await navigator.serviceWorker.getRegistration();
   const sub = await reg?.pushManager.getSubscription();
   if (sub) {
-    await deleteDoc(doc(db, 'push_subscriptions', await sha256(sub.endpoint))).catch(() => {});
+    await supabase.rpc('unsubscribe_push', { p_endpoint: sub.endpoint });
     await sub.unsubscribe();
   }
   return 'unsubscribed';
 }
 
-/** Keep the stored subscription fresh for signed-in users (endpoints rotate). */
-export async function refreshPushSubscription(uid: string) {
+/** Keep the stored subscription fresh (endpoints rotate) and attached to whoever is signed in. */
+export async function refreshPushSubscription() {
   if (!pushSupported() || Notification.permission !== 'granted') return;
   const reg = await navigator.serviceWorker.getRegistration();
   const sub = await reg?.pushManager.getSubscription();
-  if (sub) await saveSubscription(uid, sub).catch(() => {});
+  if (sub) await saveSubscription(sub).catch(() => {});
 }
 
-export interface PushSendInput {
+/** Sends a test notification to this account's devices. */
+export function sendTestPush() {
+  return api<{ devices: number; delivered: number }>('/v1/push/test', { method: 'POST', json: {} });
+}
+
+export interface NotifyInput {
   title: string;
   body: string;
   url?: string;
-  audience: 'all' | { uids: string[] };
-  tag?: string;
-  image?: string;
+  imageUrl?: string;
+  kind?: 'announcement' | 'devotional' | 'event' | 'sermon' | 'general' | 'care';
+  /** 'all' (default) or a single person's uid */
+  to?: 'all' | { uid: string };
+  push?: boolean;
 }
 
-interface PushPage { sent: number; failed: number; removed: number; total: number; nextPageToken: string | null }
-
-/** Sends to every device, page by page (the Worker caps work per request). */
-export async function sendPush(input: PushSendInput) {
-  const total = { sent: 0, failed: 0, removed: 0, total: 0 };
-  let pageToken: string | undefined;
-  for (let i = 0; i < 200; i++) {
-    const r = await api<PushPage>('/v1/push/send', { method: 'POST', json: { ...input, pageToken } });
-    total.sent += r.sent;
-    total.failed += r.failed;
-    total.removed += r.removed;
-    total.total += r.total;
-    if (!r.nextPageToken) break;
-    pageToken = r.nextPageToken;
-  }
-  return total;
+/**
+ * Posts an in-app notification. Push delivery to every device is done by the server
+ * (database trigger → Edge Function), so the sender's phone doesn't do the work.
+ */
+export async function notify(input: NotifyInput) {
+  const to = input.to ?? 'all';
+  const { error } = await supabase.from('notifications').insert({
+    title: input.title.slice(0, 140),
+    body: input.body.slice(0, 1000),
+    url: input.url && input.url.startsWith('/') ? input.url : null,
+    image_url: input.imageUrl ?? null,
+    kind: input.kind ?? 'general',
+    audience: to === 'all' ? 'all' : 'user',
+    target_uid: to === 'all' ? null : to.uid,
+    send_push: input.push !== false,
+  });
+  if (error) throw new Error(error.message);
 }

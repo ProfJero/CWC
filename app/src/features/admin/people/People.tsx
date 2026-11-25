@@ -1,16 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { Download, Upload, UserPlus, Users, Send, Tag, X, FolderPlus } from 'lucide-react';
-import { arrayUnion, doc, writeBatch } from 'firebase/firestore';
 import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth';
 import { useGroups, useMembers } from '@/lib/queries';
 import { formatPhone } from '@/lib/phone';
 import { age, fmtDate } from '@/lib/format';
 import { downloadCsv } from '@/lib/files';
-import { audit, db } from '@/lib/db';
+import { audit , patchMany, rpc } from '@/lib/db';
 import { useLocalState } from '@/lib/hooks';
 import type { Member, MembershipStatus } from '@/lib/types';
+import { NewRegistrations } from './NewRegistrations';
 import { Page, PageHeader, Toolbar } from '@/components/ui/page';
 import { Button, ButtonLink } from '@/components/ui/button';
 import { SearchInput, Select } from '@/components/ui/input';
@@ -169,6 +169,8 @@ export default function People() {
         }
       />
 
+      <NewRegistrations />
+
       <Toolbar>
         <SearchInput value={q} onChange={setQ} placeholder="Search name, phone, email or tag" className="sm:w-80" />
         <Segmented
@@ -306,13 +308,8 @@ function BulkUpdate({
     if (!value) return;
     setBusy(true);
     try {
-      for (let i = 0; i < ids.length; i += 400) {
-        const b = writeBatch(db);
-        ids.slice(i, i + 400).forEach((id) =>
-          b.update(doc(db, 'members', id), mode === 'group' ? { groupIds: arrayUnion(value) } : { membershipStatus: value as MembershipStatus }),
-        );
-        await b.commit();
-      }
+      if (mode === 'group') await rpc('set_group_membership', { p_members: ids, p_group: value, p_add: true }, ['members']);
+      else await patchMany('members', ids, { membershipStatus: value as MembershipStatus });
       void audit('update', 'members', undefined, `Bulk ${mode === 'group' ? 'added to group' : 'status change'} for ${ids.length} people`);
       toast.success(`Updated ${ids.length} ${ids.length === 1 ? 'person' : 'people'}`);
       onDone();

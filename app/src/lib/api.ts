@@ -1,7 +1,7 @@
-import { auth } from './firebase';
+import { supabase } from './supabase';
 import { config } from '@/config';
 
-/** Error from the CWC Worker (or ProfJero Connect, relayed through it). */
+/** Error from the CWC API Edge Function (or ProfJero Connect, relayed through it). */
 export class ApiError extends Error {
   constructor(public status: number, message: string, public code?: string, public requestId?: string) {
     super(message);
@@ -13,9 +13,9 @@ export function apiConfigured() {
 }
 
 export async function api<T>(path: string, init: RequestInit & { json?: unknown; idempotencyKey?: string } = {}): Promise<T> {
-  if (!config.apiUrl) throw new ApiError(0, 'The CWC API is not configured. Set VITE_API_URL (see README).', 'not_configured');
+  if (!config.apiUrl) throw new ApiError(0, 'The CWC API is not configured. Set VITE_SUPABASE_URL (see README).', 'not_configured');
   const headers = new Headers(init.headers);
-  const token = await auth?.currentUser?.getIdToken();
+  const token = (await supabase.auth.getSession()).data.session?.access_token;
   if (token) headers.set('Authorization', `Bearer ${token}`);
   if (init.json !== undefined) headers.set('Content-Type', 'application/json');
   if (init.idempotencyKey) headers.set('Idempotency-Key', init.idempotencyKey);

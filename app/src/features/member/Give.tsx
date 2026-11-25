@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Copy, Check, Smartphone, Landmark, Wallet, Printer, Info, HandHeart } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth';
+import { useRequireProfile } from '@/components/profile-prompt';
 import { useChurch } from '@/lib/settings';
 import { useCampaigns, useMemberGifts, useMemberPledges, useMember } from '@/lib/queries';
 import { copyText } from '@/lib/files';
@@ -49,6 +50,7 @@ function AccountCard({ a }: { a: PaymentAccount }) {
 export default function Give() {
   const church = useChurch();
   const { profile } = useAuth();
+  const requireProfile = useRequireProfile();
   const memberId = profile?.memberId;
   const { data: member } = useMember(memberId);
   const { data: gifts, loading } = useMemberGifts(memberId);
@@ -85,7 +87,9 @@ export default function Give() {
 
       <SectionTitle>My giving</SectionTitle>
       {!memberId ? (
-        <Banner tone="brand" icon={<Wallet />}>Your giving history appears here once the church office links your app account to your member record. Mention it at the office or to your cell leader.</Banner>
+        <Banner tone="brand" icon={<Wallet />} action={!profile && <Button size="sm" onClick={() => void requireProfile('show your giving history')}>Introduce yourself</Button>}>
+          {profile ? 'Your giving history appears here once the church office links your app account to your member record.' : 'Give using the details above — no account needed. Introduce yourself to see your personal giving history and statements.'}
+        </Banner>
       ) : (
         <>
           <div className="grid grid-cols-2 gap-3">

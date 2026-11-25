@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { Link } from 'react-router';
 import { ChevronRight, CalendarDays, MapPin } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { cld } from '@/lib/cloudinary';
+import { cld } from '@/lib/media';
 import { fmtDate, fmtTime, friendlyDay } from '@/lib/format';
 import { CwcLogo } from '@/components/brand';
 import type { ChurchEvent } from '@/lib/types';

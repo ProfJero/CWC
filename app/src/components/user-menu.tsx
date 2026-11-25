@@ -38,9 +38,9 @@ export function ThemeSwitcher({ className }: { className?: string }) {
 }
 
 export function UserMenu({ variant = 'avatar', context }: { variant?: 'avatar' | 'full'; context: 'admin' | 'member' }) {
-  const { profile, user, staff } = useAuth();
+  const { profile, staff } = useAuth();
   const navigate = useNavigate();
-  const name = profile?.fullName || user?.displayName || 'You';
+  const name = profile?.fullName || 'You';
   return (
     <Menu>
       <MenuTrigger

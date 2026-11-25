@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router';
-import { Download, LayoutDashboard, WifiOff, X } from 'lucide-react';
+import { Download, LayoutDashboard, LogIn, WifiOff, X } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { useChurch } from '@/lib/settings';
 import { useInstallPrompt, useOnline } from '@/lib/pwa';
@@ -51,7 +51,7 @@ export default function MemberLayout() {
     window.scrollTo({ top: 0 });
   }, [pathname]);
   useEffect(() => {
-    if (user) void refreshPushSubscription(user.uid);
+    if (user) void refreshPushSubscription();
   }, [user]);
 
   return (
@@ -88,7 +88,13 @@ export default function MemberLayout() {
             </ButtonLink>
           )}
           <NotificationBell />
-          <UserMenu context="member" />
+          {user ? (
+            <UserMenu context="member" />
+          ) : (
+            <ButtonLink to="/login" variant="ghost" size="sm" icon={<LogIn />}>
+              <span className="hidden sm:inline">Sign in</span>
+            </ButtonLink>
+          )}
         </div>
         {!online && (
           <div className="flex items-center justify-center gap-2 bg-warning-soft px-4 py-1.5 text-xs font-medium text-warning">

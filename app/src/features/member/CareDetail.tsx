@@ -1,11 +1,10 @@
 import { useState } from 'react';
 import { useParams } from 'react-router';
 import { Send, HeartHandshake } from 'lucide-react';
-import { arrayUnion } from 'firebase/firestore';
 import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth';
 import { useCareRequest } from '@/lib/queries';
-import { patchDoc } from '@/lib/db';
+import { rpc } from '@/lib/db';
 import { fmtDateTime, relative, fmtDate } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
@@ -20,7 +19,7 @@ export default function CareDetail() {
   const { id } = useParams();
   const { user, profile } = useAuth();
   const confirm = useConfirm();
-  const { data: c, loading } = useCareRequest(id);
+  const { data: c, loading } = useCareRequest(id, true);
   const [msg, setMsg] = useState('');
   if (loading) return <FullPageLoader />;
   if (!c) return <EmptyState icon={<HeartHandshake />} title="Request not found" />;
@@ -29,12 +28,16 @@ export default function CareDetail() {
 
   async function reply() {
     if (!msg.trim()) return;
-    await patchDoc('care_requests', c!.id, { responses: arrayUnion({ text: msg.trim(), by: profile?.fullName ?? 'Me', at: Date.now() }), status: c!.status });
-    setMsg('');
+    try {
+      await rpc('add_care_response', { p_id: c!.id, p_text: msg.trim() }, ['care_requests']);
+      setMsg('');
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
   }
   async function close() {
     if (!(await confirm({ title: 'Mark as resolved?', description: 'Let the pastors know this need has been met. Praise God!', confirmLabel: 'Mark resolved' }))) return;
-    await patchDoc('care_requests', c!.id, { responses: arrayUnion({ text: 'Marked as resolved — thank you for praying with me.', by: profile?.fullName ?? 'Me', at: Date.now() }), status: 'closed' });
+    await rpc('add_care_response', { p_id: c!.id, p_text: 'Marked as resolved — thank you for praying with me.', p_close: true }, ['care_requests']);
     toast.success('Marked as resolved');
   }
 
@@ -53,7 +56,7 @@ export default function CareDetail() {
         {(c.responses ?? []).length === 0 ? <p className="text-sm text-fg-3">No replies yet. You’ll get a notification when a pastor responds.</p> : (
           <ol className="space-y-2.5">
             {c.responses.map((r, i) => {
-              const fromMe = r.by === profile?.fullName;
+              const fromMe = r.uid ? r.uid === user?.uid : !r.staff && r.by === profile?.fullName;
               return (
                 <li key={i} className={cn('max-w-[85%] rounded-2xl px-4 py-2.5 text-sm', fromMe ? 'ml-auto rounded-br-md bg-accent text-accent-fg' : 'rounded-bl-md bg-surface-2')}>
                   <p className="whitespace-pre-wrap">{r.text}</p>

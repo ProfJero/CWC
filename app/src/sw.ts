@@ -19,9 +19,11 @@ registerRoute(
   new CacheFirst({ cacheName: 'cwc-code', plugins: [new ExpirationPlugin({ maxEntries: 120, purgeOnQuotaError: true })] }),
 );
 
-// Cloudinary media — cache-first, capped so phones don't fill up.
+// Photos & audio from Supabase Storage (public bucket) — cache-first, capped so phones don't fill up.
 registerRoute(
-  ({ url }) => url.hostname === 'res.cloudinary.com',
+  ({ url, request }) =>
+    (url.hostname.endsWith('.supabase.co') && url.pathname.startsWith('/storage/v1/object/public/') && request.destination !== 'audio') ||
+    url.hostname === 'res.cloudinary.com',
   new CacheFirst({
     cacheName: 'cwc-media',
     plugins: [new ExpirationPlugin({ maxEntries: 250, maxAgeSeconds: 60 * 60 * 24 * 30, purgeOnQuotaError: true })],

@@ -1,18 +1,21 @@
-import type { Timestamp } from 'firebase/firestore';
-
 export type ID = string;
-/** Firestore Timestamp, or a millisecond number for data that has not round-tripped yet. */
-export type TS = Timestamp | null | undefined;
+/** ISO timestamp from the database. */
+export type TS = string | null | undefined;
 
-export type Role =
-  | 'super_admin'
-  | 'admin'
-  | 'pastor'
-  | 'treasurer'
-  | 'secretary'
-  | 'staff'
-  | 'viewer'
-  | 'member';
+/** Built-in role keys. Churches can add their own roles, so any string is allowed. */
+export type BuiltInRole = 'super_admin' | 'developer' | 'admin' | 'pastor' | 'treasurer' | 'secretary' | 'staff' | 'viewer' | 'member';
+export type Role = BuiltInRole | (string & {});
+
+export interface RoleDef {
+  id?: ID;
+  key: string;
+  label: string;
+  description: string;
+  tone: string;
+  permissions: string[];
+  isSystem: boolean;
+  sort: number;
+}
 
 export interface UserProfile {
   id: ID;
@@ -26,7 +29,11 @@ export interface UserProfile {
   photoUrl?: string;
   createdAt?: TS;
   lastLogin?: TS;
-  notificationPrefs?: { push?: boolean; sms?: boolean; email?: boolean };
+  notificationPrefs?: { push?: boolean; sms?: boolean; email?: boolean; kinds?: Record<string, boolean> };
+  isGuest?: boolean;
+  mustChangePassword?: boolean;
+  /** Joined from roles when loaded by the auth provider. */
+  roleDef?: RoleDef | null;
 }
 
 export type MembershipStatus =
@@ -81,6 +88,8 @@ export interface Member {
   invitedBy?: string;
   smsOptOut?: boolean;
   keywords: string[];
+  selfRegistered?: boolean;
+  verified?: boolean;
   createdAt?: TS;
   updatedAt?: TS;
   createdBy?: ID;
@@ -300,7 +309,32 @@ export interface CareResponse {
   text: string;
   by: string;
   at: number;
+  uid?: string;
+  /** Written by the pastoral team (not the requester). */
+  staff?: boolean;
   internal?: boolean;
+}
+
+export interface CareNote {
+  id: ID;
+  careRequestId: ID;
+  text: string;
+  by?: ID;
+  byName: string;
+  at: TS;
+}
+
+export interface PrayerWallItem {
+  id: ID;
+  subject?: string;
+  details: string;
+  name: string;
+  anonymous: boolean;
+  prayedCount: number;
+  createdAt: TS;
+  latestReply?: CareResponse | null;
+  prayed: boolean;
+  mine: boolean;
 }
 
 export interface CareRequest {
@@ -380,25 +414,37 @@ export interface SmsTemplate {
   createdAt?: TS;
 }
 
+export type NotificationKind = 'announcement' | 'devotional' | 'event' | 'care' | 'sermon' | 'general' | 'followup' | 'people' | 'system' | 'giving';
+
 export interface AppNotification {
   id: ID;
   title: string;
   body: string;
-  url?: string;
-  audience: 'all' | ID; // 'all' or a uid
-  kind: 'announcement' | 'devotional' | 'event' | 'care' | 'sermon' | 'general';
+  url?: string | null;
+  imageUrl?: string | null;
+  /** 'all' = everyone (visitors too), 'user' = one person, 'perm' = staff holding a permission */
+  audience: 'all' | 'user' | 'perm';
+  targetUid?: ID | null;
+  targetPerm?: string | null;
+  kind: NotificationKind;
+  sendPush?: boolean;
   createdAt?: TS;
   createdBy?: ID;
-  push?: { sent: number; failed: number } | null;
+  push?: { sent: number; failed: number; removed?: number; total?: number; at?: string } | null;
 }
 
-export interface PushSubscriptionDoc {
-  id: ID;
-  uid: ID;
-  endpoint: string;
-  keys: { p256dh: string; auth: string };
+export interface AppError {
+  id: number;
+  day: string;
+  message: string;
+  stack?: string;
+  url?: string;
   userAgent?: string;
-  createdAt?: TS;
+  release?: string;
+  uid?: string | null;
+  count: number;
+  firstAt: TS;
+  lastAt: TS;
 }
 
 export interface AuditLog {
@@ -442,4 +488,12 @@ export interface ChurchSettings {
   birthdaySms?: string;
   autoBirthdaySms?: boolean;
   autoWelcomeSms?: boolean;
+  /** Push a reminder the day before to everyone who RSVP'd (default on). */
+  autoEventReminders?: boolean;
+  /** Push today's devotional to everyone each morning. */
+  autoDevotionalPush?: boolean;
+  /** Let visitors use the app without an account (default on). */
+  allowGuests?: boolean;
+  welcomeMessage?: string;
+  livestreamUrl?: string;
 }

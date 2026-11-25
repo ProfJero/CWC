@@ -1,58 +1,70 @@
-import type { Role } from './types';
+import type { Role, RoleDef } from './types';
 
 /**
- * Role → permission matrix. Keep in sync with /firestore.rules, which enforces
- * the same rules server-side; the UI only hides what a role cannot do.
+ * Permission catalog. Roles are stored in the database (public.roles) as lists of these keys,
+ * so new roles can be added from Users & roles without code changes. Keep this list in sync with
+ * private.permission_catalog in supabase/migrations — the database is what enforces access.
  */
-export const PERMISSIONS = [
-  'dashboard.view',
-  'people.view',
-  'people.manage',
-  'people.delete',
-  'groups.manage',
-  'followups.manage',
-  'attendance.manage',
-  'giving.view',
-  'giving.manage',
-  'expenses.manage',
-  'events.manage',
-  'content.manage',
-  'care.view',
-  'care.manage',
-  'care.confidential',
-  'messaging.sms',
-  'messaging.push',
-  'reports.view',
-  'users.manage',
-  'settings.manage',
-  'audit.view',
+export const PERMISSION_GROUPS = [
+  {
+    label: 'People',
+    items: [
+      { key: 'dashboard.view', label: 'Open the staff dashboard' },
+      { key: 'people.view', label: 'View the member directory' },
+      { key: 'people.manage', label: 'Add and edit people' },
+      { key: 'people.delete', label: 'Delete and merge records' },
+      { key: 'groups.manage', label: 'Manage groups & ministries' },
+      { key: 'followups.manage', label: 'Work on follow-ups' },
+    ],
+  },
+  {
+    label: 'Ministry',
+    items: [
+      { key: 'attendance.manage', label: 'Run services & check-in' },
+      { key: 'events.manage', label: 'Create and publish events' },
+      { key: 'content.manage', label: 'Devotionals, sermons, announcements' },
+      { key: 'care.view', label: 'See pastoral care requests' },
+      { key: 'care.manage', label: 'Reply to and manage care' },
+      { key: 'care.confidential', label: 'Counselling & confidential notes' },
+    ],
+  },
+  {
+    label: 'Finance',
+    items: [
+      { key: 'giving.view', label: 'View giving' },
+      { key: 'giving.manage', label: 'Record giving & pledges' },
+      { key: 'expenses.manage', label: 'Record expenses' },
+    ],
+  },
+  {
+    label: 'Communication',
+    items: [
+      { key: 'messaging.sms', label: 'Send SMS' },
+      { key: 'messaging.push', label: 'Send app notifications' },
+    ],
+  },
+  {
+    label: 'Administration',
+    items: [
+      { key: 'reports.view', label: 'View reports' },
+      { key: 'users.manage', label: 'Manage accounts' },
+      { key: 'roles.manage', label: 'Create and edit roles' },
+      { key: 'settings.manage', label: 'Church settings' },
+      { key: 'audit.view', label: 'Activity log' },
+      { key: 'system.monitor', label: 'Developer console & system health' },
+    ],
+  },
 ] as const;
 
+export const PERMISSIONS = PERMISSION_GROUPS.flatMap((g) => g.items.map((i) => i.key));
 export type Permission = (typeof PERMISSIONS)[number];
 
-const ALL = [...PERMISSIONS];
+export type BadgeTone = 'neutral' | 'brand' | 'success' | 'warning' | 'danger' | 'info' | 'gold';
 
-export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
-  super_admin: ALL,
-  admin: ALL,
-  pastor: [
-    'dashboard.view', 'people.view', 'people.manage', 'groups.manage', 'followups.manage',
-    'attendance.manage', 'giving.view', 'events.manage', 'content.manage', 'care.view',
-    'care.manage', 'care.confidential', 'messaging.sms', 'messaging.push', 'reports.view',
-  ],
-  treasurer: ['dashboard.view', 'people.view', 'giving.view', 'giving.manage', 'expenses.manage', 'reports.view'],
-  secretary: [
-    'dashboard.view', 'people.view', 'people.manage', 'groups.manage', 'followups.manage',
-    'attendance.manage', 'events.manage', 'content.manage', 'messaging.sms', 'messaging.push',
-    'reports.view',
-  ],
-  staff: ['dashboard.view', 'people.view', 'attendance.manage', 'followups.manage'],
-  viewer: ['dashboard.view', 'people.view', 'reports.view'],
-  member: [],
-};
-
-export const ROLE_META: Record<Role, { label: string; description: string; tone: BadgeTone }> = {
-  super_admin: { label: 'Super Admin', description: 'Full access, including roles and settings', tone: 'danger' },
+/** Fallback labels while roles load (the database is the source of truth). */
+export const ROLE_META: Record<string, { label: string; description: string; tone: BadgeTone }> = {
+  super_admin: { label: 'Super Admin', description: 'Full access, including roles, admins and settings', tone: 'danger' },
+  developer: { label: 'Developer', description: 'Maintains the platform: monitoring, diagnostics and integrations', tone: 'info' },
   admin: { label: 'Administrator', description: 'Runs day-to-day church operations', tone: 'brand' },
   pastor: { label: 'Pastor', description: 'People, care, content and messaging', tone: 'info' },
   treasurer: { label: 'Treasurer', description: 'Giving, pledges and expenses', tone: 'success' },
@@ -62,22 +74,28 @@ export const ROLE_META: Record<Role, { label: string; description: string; tone:
   member: { label: 'Member', description: 'Member app only', tone: 'neutral' },
 };
 
-export type BadgeTone = 'neutral' | 'brand' | 'success' | 'warning' | 'danger' | 'info' | 'gold';
+export const PROTECTED_ROLES = ['super_admin', 'developer'];
 
-export const STAFF_ROLES: Role[] = ['super_admin', 'admin', 'pastor', 'treasurer', 'secretary', 'staff', 'viewer'];
-
-export function can(role: Role | undefined | null, permission: Permission): boolean {
-  if (!role) return false;
-  return ROLE_PERMISSIONS[role]?.includes(permission) ?? false;
+export function roleMeta(role: Role | null | undefined, roles?: RoleDef[]) {
+  const def = roles?.find((r) => r.key === role);
+  if (def) return { label: def.label, description: def.description, tone: (def.tone as BadgeTone) || 'neutral' };
+  return ROLE_META[role ?? 'member'] ?? { label: String(role ?? 'Member'), description: '', tone: 'neutral' as BadgeTone };
 }
 
-export function isStaff(role: Role | undefined | null): boolean {
-  return !!role && STAFF_ROLES.includes(role);
+export function hasPermission(permissions: readonly string[] | null | undefined, permission: Permission) {
+  return !!permissions?.includes(permission);
 }
 
-/** Roles a given admin may assign. Only super admins can create other super admins. */
-export function assignableRoles(actor: Role): Role[] {
-  if (actor === 'super_admin') return ['super_admin', 'admin', 'pastor', 'treasurer', 'secretary', 'staff', 'viewer', 'member'];
-  if (actor === 'admin') return ['admin', 'pastor', 'treasurer', 'secretary', 'staff', 'viewer', 'member'];
-  return [];
+/** Roles this person may assign: never more powerful than their own permissions. */
+export function assignableRoles(actorRole: Role | null, actorPerms: readonly string[], roles: RoleDef[]): RoleDef[] {
+  if (!actorPerms.includes('users.manage')) return [];
+  return roles.filter((r) => r.permissions.every((p) => actorPerms.includes(p)) && (r.key !== 'super_admin' || actorRole === 'super_admin'));
+}
+
+/** Can the actor change this person's role / status / password? */
+export function canManageAccount(actorRole: Role | null, actorPerms: readonly string[], targetRole: Role, roles: RoleDef[]) {
+  if (!actorPerms.includes('users.manage')) return false;
+  const target = roles.find((r) => r.key === targetRole);
+  if (targetRole === 'super_admin' && actorRole !== 'super_admin') return false;
+  return (target?.permissions ?? []).every((p) => actorPerms.includes(p));
 }

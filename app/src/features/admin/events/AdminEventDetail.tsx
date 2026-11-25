@@ -7,7 +7,7 @@ import { removeDoc } from '@/lib/db';
 import { fmtDate, fmtTime, num, relative } from '@/lib/format';
 import { formatPhone } from '@/lib/phone';
 import { downloadCsv } from '@/lib/files';
-import { cld } from '@/lib/cloudinary';
+import { cld } from '@/lib/media';
 import { sum } from '@/lib/utils';
 import { Page, PageHeader } from '@/components/ui/page';
 import { Button, buttonClass } from '@/components/ui/button';

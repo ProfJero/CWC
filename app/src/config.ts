@@ -1,20 +1,15 @@
 const env = import.meta.env;
 
-export const firebaseConfig = {
-  apiKey: env.VITE_FIREBASE_API_KEY as string | undefined,
-  authDomain: env.VITE_FIREBASE_AUTH_DOMAIN as string | undefined,
-  projectId: env.VITE_FIREBASE_PROJECT_ID as string | undefined,
-  storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET as string | undefined,
-  messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID as string | undefined,
-  appId: env.VITE_FIREBASE_APP_ID as string | undefined,
-};
+const supabaseUrl = ((env.VITE_SUPABASE_URL as string | undefined) ?? '').replace(/\/$/, '');
 
 export const config = {
-  apiUrl: ((env.VITE_API_URL as string | undefined) ?? '').replace(/\/$/, ''),
-  cloudinaryCloudName: (env.VITE_CLOUDINARY_CLOUD_NAME as string | undefined) ?? '',
-  cloudinaryUploadPreset: (env.VITE_CLOUDINARY_UPLOAD_PRESET as string | undefined) ?? '',
-  useEmulators: env.VITE_USE_EMULATORS === 'true',
-  isConfigured: Boolean(firebaseConfig.apiKey && firebaseConfig.projectId),
+  supabaseUrl,
+  /** Publishable (anon) key — safe in the browser; access is enforced by row level security. */
+  supabaseKey: (env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined) ?? '',
+  /** CWC API (Supabase Edge Function). Defaults to the project's `api` function. */
+  apiUrl: ((env.VITE_API_URL as string | undefined) || (supabaseUrl ? `${supabaseUrl}/functions/v1/api` : '')).replace(/\/$/, ''),
+  release: (env.VITE_RELEASE as string | undefined) ?? '2.0.0',
+  isConfigured: Boolean(supabaseUrl && env.VITE_SUPABASE_PUBLISHABLE_KEY),
 };
 
 /** Defaults shown until the church profile is saved in Settings. */

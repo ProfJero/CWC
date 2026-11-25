@@ -140,7 +140,7 @@ export default function AdminLayout() {
     setDrawer(false);
   }, [location.pathname]);
   useEffect(() => {
-    if (user) void refreshPushSubscription(user.uid);
+    if (user) void refreshPushSubscription();
   }, [user]);
 
   return (

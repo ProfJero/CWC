@@ -2,11 +2,10 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { Plus, X, Save, CheckCircle2, XCircle, Loader2, Smartphone, Landmark, PartyPopper } from 'lucide-react';
 import { toast } from 'sonner';
-import { upsertDoc } from '@/lib/db';
+import { saveChurchSettings } from '@/lib/settings';
 import { DEFAULT_SETTINGS, useChurch } from '@/lib/settings';
 import { api, apiConfigured } from '@/lib/api';
-import { cloudinaryConfigured } from '@/lib/cloudinary';
-import { config, firebaseConfig, SIGNATURE } from '@/config';
+import { config, SIGNATURE } from '@/config';
 import { segmentInfo } from '@/lib/sms';
 import type { ChurchSettings, PaymentAccount } from '@/lib/types';
 import { Page, PageHeader } from '@/components/ui/page';
@@ -42,7 +41,7 @@ export default function Settings() {
   async function save() {
     setBusy(true);
     try {
-      await upsertDoc('settings', 'church', { ...s, smsSenderId: (s.smsSenderId ?? '').slice(0, 11) }, { audit: 'Updated church settings' });
+      await saveChurchSettings({ ...s, smsSenderId: (s.smsSenderId ?? '').slice(0, 11) });
       toast.success('Settings saved');
       setDirty(false);
     } catch (e) {
@@ -104,7 +103,18 @@ export default function Settings() {
             <Field label="First-timer welcome SMS" hint={`${segmentInfo(s.welcomeSms ?? '').pages} page(s). Use {first_name|Beloved}.`}><Textarea rows={3} {...bind('welcomeSms')} /></Field>
             <Switch checked={!!s.autoWelcomeSms} onCheckedChange={(v) => set('autoWelcomeSms', v)} label="Offer to send the welcome SMS when a first-timer is added" />
             <Field label="Birthday SMS" hint={`${segmentInfo(s.birthdaySms ?? '').pages} page(s).`}><Textarea rows={3} {...bind('birthdaySms')} /></Field>
-            <Switch checked={!!s.autoBirthdaySms} onCheckedChange={(v) => set('autoBirthdaySms', v)} label="Send birthday SMS automatically every morning" description="Runs at 7:00 AM from the CWC Worker (requires its Firebase service account — see README)." />
+            <Switch checked={!!s.autoBirthdaySms} onCheckedChange={(v) => set('autoBirthdaySms', v)} label="Send birthday SMS automatically every morning" description="Runs at 7:00 AM every day (needs the SMS key — set by a developer in Developer → Integrations)." />
+          </div>
+        </Card>
+
+        <Card>
+          <CardHeader title="Member app" description="How visitors and members experience the app." />
+          <div className="space-y-4 px-5 pb-5">
+            <Switch checked={s.allowGuests !== false} onCheckedChange={(v) => set('allowGuests', v)} label="Let people use the app without creating an account" description="Visitors can read devotionals, sermons and events straight away. To RSVP, give or ask for prayer they only complete a short profile." />
+            <Switch checked={s.autoEventReminders !== false} onCheckedChange={(v) => set('autoEventReminders', v)} label="Remind people the day before events they RSVP’d for" description="Free app notification at 7:00 AM." />
+            <Switch checked={!!s.autoDevotionalPush} onCheckedChange={(v) => set('autoDevotionalPush', v)} label="Send today’s devotional as a notification each morning" />
+            <TextField label="Welcome message on the home screen" {...bind('welcomeMessage')} placeholder="You are welcome home! We’re glad you’re here." />
+            <TextField label="Live stream link (optional)" {...bind('livestreamUrl')} placeholder="https://youtube.com/@yourchurch/live" />
           </div>
         </Card>
 
@@ -195,10 +205,10 @@ function PaymentAccounts({ value, onChange }: { value: PaymentAccount[]; onChang
 }
 
 function Integrations() {
-  const [health, setHealth] = useState<null | { ok: boolean; sms?: boolean; push?: boolean; media?: boolean; serviceAccount?: boolean; error?: string }>(null);
+  const [health, setHealth] = useState<null | { ok: boolean; sms?: boolean; push?: boolean; error?: string }>(null);
   useEffect(() => {
-    if (!apiConfigured()) return setHealth({ ok: false, error: 'VITE_API_URL is not set' });
-    api<{ ok: boolean; sms: boolean; push: boolean; media: boolean; serviceAccount: boolean }>('/v1/health')
+    if (!apiConfigured()) return setHealth({ ok: false, error: 'Not configured' });
+    api<{ ok: boolean; sms: boolean; push: boolean }>('/v1/health')
       .then(setHealth)
       .catch((e) => setHealth({ ok: false, error: (e as Error).message }));
   }, []);
@@ -213,14 +223,14 @@ function Integrations() {
     <Card>
       <CardHeader title="Integrations" description="Connection status of the services behind the app." />
       <ul className="divide-y divide-line border-t border-line">
-        <Row label="Firebase (database & sign-in)" ok detail={config.useEmulators ? 'Local emulators' : firebaseConfig.projectId ?? ''} />
-        <Row label="CWC API (Cloudflare Worker)" ok={health ? health.ok : undefined} detail={health?.ok ? 'Online' : health?.error ?? 'Checking…'} />
-        <Row label="ProfJero Connect SMS" ok={health ? !!health.sms : undefined} detail={health?.sms ? 'API key set' : 'Add PROFJERO_API_KEY to the Worker'} />
-        <Row label="Push notifications" ok={health ? !!health.push : undefined} detail={health?.push ? 'VAPID keys set' : 'Add VAPID keys to the Worker'} />
-        <Row label="Cloudinary uploads" ok={cloudinaryConfigured() && (!!config.cloudinaryUploadPreset || !!health?.media)} detail={config.cloudinaryCloudName || 'Set VITE_CLOUDINARY_CLOUD_NAME'} />
-        <Row label="Daily automations" ok={health ? !!health.serviceAccount : undefined} detail={health?.serviceAccount ? 'Birthday SMS & reminders enabled' : 'Optional: add a Firebase service account'} />
+        <Row label="Database & sign-in (Supabase)" ok detail={new URL(config.supabaseUrl).host.split('.')[0]} />
+        <Row label="CWC API (Edge Function)" ok={health ? health.ok : undefined} detail={health?.ok ? 'Online' : health?.error ?? 'Checking…'} />
+        <Row label="ProfJero Connect SMS" ok={health ? !!health.sms : undefined} detail={health?.sms ? 'API key set' : 'A developer adds the key in Developer → Integrations'} />
+        <Row label="Push notifications" ok={health ? !!health.push : undefined} detail="Free, sent by the server" />
+        <Row label="Photo & audio storage" ok detail="Supabase Storage" />
+        <Row label="Daily automations" ok detail="Birthdays & reminders at 7:00 AM" />
       </ul>
-      <div className="px-5 py-3"><Badge tone="neutral">Secrets never live in the app — only in the Worker.</Badge></div>
+      <div className="px-5 py-3"><Badge tone="neutral">Secret keys never live in the app — only on the server.</Badge></div>
     </Card>
   );
 }

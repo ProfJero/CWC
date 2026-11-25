@@ -3,7 +3,7 @@ import { Bookmark, BookmarkCheck, Share2, ChevronLeft, ChevronRight, Minus, Plus
 import { toast } from 'sonner';
 import { useDevotional, usePublishedDevotionals } from '@/lib/queries';
 import { fmtDate, isoDate } from '@/lib/format';
-import { cld } from '@/lib/cloudinary';
+import { cld } from '@/lib/media';
 import { shareOrCopy } from '@/lib/files';
 import { useLocalState, useDocumentTitle } from '@/lib/hooks';
 import { FullPageLoader, EmptyState } from '@/components/ui/feedback';

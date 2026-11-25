@@ -10,6 +10,9 @@ import { RouteError } from '@/features/misc/RouteError';
 import { SetupRequired } from '@/features/misc/SetupRequired';
 import { NoAccess } from '@/features/misc/NoAccess';
 import { useTheme } from '@/lib/theme';
+import { ProfilePromptProvider } from '@/components/profile-prompt';
+
+const ForcePasswordChange = lazy(() => import('@/features/auth/ForcePasswordChange'));
 
 const AuthLayout = lazy(() => import('@/layouts/AuthLayout'));
 const MemberLayout = lazy(() => import('@/layouts/MemberLayout'));
@@ -25,6 +28,13 @@ function RequireAuth({ children }: { children: ReactNode }) {
   const location = useLocation();
   if (loading) return <FullPageLoader />;
   if (!user) return <Navigate to={`/login?next=${encodeURIComponent(location.pathname + location.search)}`} replace />;
+  return <>{children}</>;
+}
+
+/** Accounts created with a temporary password must choose their own first. */
+function PasswordGate({ children }: { children: ReactNode }) {
+  const { profile } = useAuth();
+  if (profile?.mustChangePassword) return <ForcePasswordChange />;
   return <>{children}</>;
 }
 
@@ -66,14 +76,16 @@ const router = createBrowserRouter([
       },
       {
         element: <AuthLayout />,
-        children: [{ path: '/setup', element: p(() => import('@/features/auth/Setup')) }],
+        children: [{ path: '/reset-password', element: p(() => import('@/features/auth/ResetPassword')) }],
       },
       { path: '/welcome', element: p(() => import('@/features/auth/Welcome')) },
       {
+        // Open to everyone: visitors browse without an account and complete a short profile
+        // only when they do something personal (RSVP, prayer request, check-in, giving history).
         element: (
-          <RequireAuth>
+          <PasswordGate>
             <MemberLayout />
-          </RequireAuth>
+          </PasswordGate>
         ),
         children: [
           { path: '/', element: p(() => import('@/features/member/Home')) },
@@ -97,9 +109,11 @@ const router = createBrowserRouter([
         path: '/admin',
         element: (
           <RequireAuth>
-            <RequireStaff>
-              <AdminLayout />
-            </RequireStaff>
+            <PasswordGate>
+              <RequireStaff>
+                <AdminLayout />
+              </RequireStaff>
+            </PasswordGate>
           </RequireAuth>
         ),
         children: [
@@ -122,6 +136,7 @@ const router = createBrowserRouter([
           { path: 'users', element: <Gate permission="users.manage">{p(() => import('@/features/admin/users/Users'))}</Gate> },
           { path: 'settings', element: <Gate permission="settings.manage">{p(() => import('@/features/admin/settings/Settings'))}</Gate> },
           { path: 'audit', element: <Gate permission="audit.view">{p(() => import('@/features/admin/audit/Audit'))}</Gate> },
+          { path: 'developer', element: <Gate permission="system.monitor">{p(() => import('@/features/admin/developer/Developer'))}</Gate> },
         ],
       },
       { path: '*', element: p(() => import('@/features/misc/NotFound')) },
@@ -154,7 +169,9 @@ export function App() {
   return (
     <AuthProvider>
       <ConfirmProvider>
-        <Shell />
+        <ProfilePromptProvider>
+          <Shell />
+        </ProfilePromptProvider>
       </ConfirmProvider>
     </AuthProvider>
   );

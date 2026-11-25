@@ -2,11 +2,13 @@ import { isRouteErrorResponse, useRouteError } from 'react-router';
 import { RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { CwcLogo } from '@/components/brand';
+import { reportError } from '@/lib/errors';
 
 export function RouteError() {
   const error = useRouteError();
   const chunk = error instanceof Error && /dynamically imported module|Loading chunk|Importing a module script/i.test(error.message);
   const message = isRouteErrorResponse(error) ? `${error.status} ${error.statusText}` : error instanceof Error ? error.message : 'Unexpected error';
+  if (!chunk && !isRouteErrorResponse(error)) reportError(error, 'route');
   return (
     <div className="grid min-h-dvh place-items-center bg-bg px-6">
       <div className="max-w-sm text-center">

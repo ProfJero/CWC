@@ -3,6 +3,7 @@ import { format, subDays, startOfMonth, subMonths } from 'date-fns';
 import { Users, CalendarCheck2, HandCoins, HeartHandshake, UserPlus, Send, Cake, Route, CalendarDays, ChevronRight, Sparkles } from 'lucide-react';
 import { Link } from 'react-router';
 import { useAuth } from '@/lib/auth';
+import { NewRegistrations } from './people/NewRegistrations';
 import { useCareRequests, useEvents, useExpensesSince, useFollowUps, useGiftsSince, useMembers, useServices } from '@/lib/queries';
 import { attendanceByDate, change, monthlyFinance, upcomingBirthdays, ACTIVE_STATUSES } from '@/lib/stats';
 import { cedis, friendlyDay, greeting, isoDate, num, relative } from '@/lib/format';
@@ -115,6 +116,8 @@ export default function Dashboard() {
           <Stat label="Open follow-ups" value={num(dueFollowUps.length)} hint="first-timers & absentees" icon={<Route />} tone="success" to="/admin/follow-ups" loading={followups.loading} />
         )}
       </div>
+
+      {can('people.view') && <div className="mt-4"><NewRegistrations compact /></div>}
 
       <div className="mt-4 grid gap-4 lg:grid-cols-3">
         <ChartCard

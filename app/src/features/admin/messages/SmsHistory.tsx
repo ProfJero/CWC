@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { useSmsMessages } from '@/lib/queries';
 import { api, ApiError } from '@/lib/api';
 import { patchDoc } from '@/lib/db';
-import { fmtDateTime, num, relative } from '@/lib/format';
+import { fmtDateTime, num, relative , toDate } from '@/lib/format';
 import { formatPhone } from '@/lib/phone';
 import type { SmsMessage } from '@/lib/types';
 import type { BadgeTone } from '@/lib/permissions';
@@ -40,7 +40,7 @@ export function SmsHistory() {
     { key: 'to', header: 'To', align: 'right', sort: (m) => m.recipients, cell: (m) => num(m.recipients) },
     { key: 'units', header: 'Units', align: 'right', hideBelow: 'md', cell: (m) => (m.unitsCharged != null ? num(m.unitsCharged) : m.unitsReserved != null ? `~${num(m.unitsReserved)}` : '—') },
     { key: 'status', header: 'Status', cell: (m) => <Badge tone={SMS_STATUS[m.status]?.tone}>{SMS_STATUS[m.status]?.label ?? m.status}</Badge> },
-    { key: 'when', header: 'When', hideBelow: 'lg', sort: (m) => m.createdAt?.toMillis?.() ?? 0, cell: (m) => <span className="whitespace-nowrap text-fg-2">{m.status === 'scheduled' && m.scheduledAt ? fmtDateTime(m.scheduledAt) : relative(m.createdAt)}</span> },
+    { key: 'when', header: 'When', hideBelow: 'lg', sort: (m) => toDate(m.createdAt)?.getTime() ?? 0, cell: (m) => <span className="whitespace-nowrap text-fg-2">{m.status === 'scheduled' && m.scheduledAt ? fmtDateTime(m.scheduledAt) : relative(m.createdAt)}</span> },
   ];
 
   return (

@@ -1,11 +1,10 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { Pencil, UserPlus, Send, Trash2, Crown, MoreHorizontal, UserMinus, Download, UsersRound } from 'lucide-react';
-import { arrayRemove, arrayUnion } from 'firebase/firestore';
 import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth';
 import { useGroup, useMembers } from '@/lib/queries';
-import { patchDoc, removeDoc } from '@/lib/db';
+import { patchDoc, removeDoc, rpc } from '@/lib/db';
 import { formatPhone } from '@/lib/phone';
 import { downloadCsv } from '@/lib/files';
 import { fmtTime } from '@/lib/format';
@@ -45,12 +44,12 @@ export default function GroupDetail() {
 
   async function addMember() {
     if (!pick?.id) return;
-    await patchDoc('members', pick.id, { groupIds: arrayUnion(g!.id) });
+    await rpc('set_group_membership', { p_members: [pick.id], p_group: g!.id, p_add: true }, ['members']);
     toast.success(`${pick.name} added to ${g!.name}`);
     setPick(null);
   }
   async function removeMember(mid: string, name: string) {
-    await patchDoc('members', mid, { groupIds: arrayRemove(g!.id) });
+    await rpc('set_group_membership', { p_members: [mid], p_group: g!.id, p_add: false }, ['members']);
     if (g!.leaderIds?.includes(mid)) await toggleLeader(mid, name);
     toast.success(`${name} removed`);
   }

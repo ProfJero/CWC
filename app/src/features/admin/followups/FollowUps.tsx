@@ -1,16 +1,14 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { Phone, MessageCircle, Plus, CalendarClock, Route, Send, ChevronRight, Trash2 } from 'lucide-react';
-import { arrayUnion } from 'firebase/firestore';
 import { toast } from 'sonner';
 import { useAuth } from '@/lib/auth';
 import { useFollowUps, useUsers } from '@/lib/queries';
-import { createDoc, getActor, patchDoc, removeDoc } from '@/lib/db';
+import { createDoc, patchDoc, removeDoc, rpc } from '@/lib/db';
 import { formatPhone, telHref, whatsappHref } from '@/lib/phone';
 import { fmtDate, isoDate, relative, friendlyDay } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { useIsDesktop } from '@/lib/hooks';
-import { isStaff } from '@/lib/permissions';
 import type { FollowUp, FollowUpKind, FollowUpStage } from '@/lib/types';
 import { Page, PageHeader, Toolbar } from '@/components/ui/page';
 import { Button, buttonClass } from '@/components/ui/button';
@@ -61,7 +59,7 @@ export default function FollowUps() {
   async function move(id: string, to: FollowUpStage) {
     const f = data.find((x) => x.id === id);
     if (!f || f.stage === to) return;
-    await patchDoc('followups', id, { stage: to, notes: arrayUnion({ text: `Moved to ${STAGES.find((s) => s.value === to)?.label}`, by: getActor()?.name ?? '', at: Date.now() }) });
+    await rpc('followup_add_note', { p_id: id, p_text: `Moved to ${STAGES.find((s) => s.value === to)?.label}`, p_stage: to }, ['followups']);
   }
 
   return (
@@ -178,12 +176,12 @@ function FollowUpSheet({ f, onClose, onMove }: { f: FollowUp | null; onClose: ()
   const navigate = useNavigate();
   const confirm = useConfirm();
   const [note, setNote] = useState('');
-  const staff = users.filter((u) => isStaff(u.role) && u.isActive !== false);
+  const staff = users.filter((u) => u.role !== 'member' && u.isActive !== false);
   if (!f) return null;
 
   async function addNote() {
     if (!note.trim() || !f) return;
-    await patchDoc('followups', f.id, { notes: arrayUnion({ text: note.trim(), by: getActor()?.name ?? '', at: Date.now() }) });
+    await rpc('followup_add_note', { p_id: f.id, p_text: note.trim() }, ['followups']);
     setNote('');
   }
   async function assign(uid: string) {

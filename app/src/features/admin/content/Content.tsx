@@ -6,7 +6,7 @@ import { useAnnouncements, useDevotionals, useSermons } from '@/lib/queries';
 import { createDoc, patchDoc, removeDoc } from '@/lib/db';
 import { excerpt, youtubeId } from '@/lib/utils';
 import { fmtDate, isoDate, relative } from '@/lib/format';
-import { cld, uploadToCloudinary, cloudinaryConfigured } from '@/lib/cloudinary';
+import { cld, uploadToCloudinary, cloudinaryConfigured } from '@/lib/media';
 import type { Announcement, ContentStatus, Devotional, Sermon } from '@/lib/types';
 import { Page, PageHeader } from '@/components/ui/page';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';

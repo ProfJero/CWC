@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { cn, initials } from '@/lib/utils';
-import { cld } from '@/lib/cloudinary';
+import { cld } from '@/lib/media';
 
 const palette = [
   'bg-brand-100 text-brand-800 dark:bg-brand-500/20 dark:text-brand-200',

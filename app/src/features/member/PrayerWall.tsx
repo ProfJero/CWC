@@ -1,9 +1,9 @@
 import { HeartHandshake, Plus, Quote } from 'lucide-react';
-import { increment } from 'firebase/firestore';
 import { usePrayerWall, usePublishedTestimonies } from '@/lib/queries';
-import { patchDoc } from '@/lib/db';
+import { invalidate, rpc } from '@/lib/db';
+import { useAuth } from '@/lib/auth';
 import { relative } from '@/lib/format';
-import { useLocalState } from '@/lib/hooks';
+import { deviceKey, useLocalState } from '@/lib/hooks';
 import { Button, ButtonLink } from '@/components/ui/button';
 import { Avatar } from '@/components/ui/avatar';
 import { EmptyState, SkeletonRows } from '@/components/ui/feedback';
@@ -11,16 +11,18 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { MemberPage } from './ui';
 
 export default function PrayerWall() {
-  const { data, loading } = usePrayerWall();
+  const { user } = useAuth();
+  const { data, loading } = usePrayerWall(deviceKey(), user?.uid ?? 'anon');
   const { data: testimonies } = usePublishedTestimonies();
   const [prayed, setPrayed] = useLocalState<string[]>('cwc-prayed', []);
-  const open = data.filter((c) => c.status !== 'closed');
+  const open = data;
 
   async function pray(id: string) {
     if (prayed.includes(id)) return;
     setPrayed((p) => [...p, id]);
     navigator.vibrate?.(12);
-    await patchDoc('care_requests', id, { prayedCount: increment(1) }).catch(() => {});
+    await rpc('pray_for', { p_id: id, p_key: deviceKey() }).catch(() => {});
+    invalidate('care_prayers');
   }
 
   return (
@@ -34,8 +36,8 @@ export default function PrayerWall() {
           {loading ? <div className="card"><SkeletonRows /></div> : open.length === 0 ? <div className="card"><EmptyState icon={<HeartHandshake />} title="No public prayer requests" description="When members share a request on the wall, it appears here." /></div> : (
             <div className="space-y-3">
               {open.map((c) => {
-                const done = prayed.includes(c.id);
-                const name = c.anonymous ? 'Someone in our church' : c.name;
+                const done = c.prayed || prayed.includes(c.id);
+                const name = c.name;
                 return (
                   <article key={c.id} className="card p-4">
                     <div className="flex items-center gap-2.5">
@@ -44,11 +46,11 @@ export default function PrayerWall() {
                     </div>
                     {c.subject && <h3 className="mt-3 font-semibold">{c.subject}</h3>}
                     <p className="mt-1 whitespace-pre-wrap text-[15px] leading-relaxed text-fg-2">{c.details}</p>
-                    {c.responses?.filter((r) => r.by !== c.name).slice(-1).map((r, i) => (
-                      <p key={i} className="mt-3 rounded-xl bg-accent-soft px-3 py-2 text-sm"><span className="font-medium">{r.by}:</span> {r.text}</p>
-                    ))}
+                    {c.latestReply && (
+                      <p className="mt-3 rounded-xl bg-accent-soft px-3 py-2 text-sm"><span className="font-medium">{c.latestReply.by}:</span> {c.latestReply.text}</p>
+                    )}
                     <div className="mt-3 flex items-center justify-between">
-                      <span className="text-xs text-fg-3">{(c.prayedCount ?? 0) + (done && !c.prayedCount ? 1 : 0)} praying</span>
+                      <span className="text-xs text-fg-3">{(c.prayedCount ?? 0) + (prayed.includes(c.id) && !c.prayed ? 1 : 0)} praying</span>
                       <Button size="sm" variant={done ? 'soft' : 'outline'} icon={<HeartHandshake />} onClick={() => pray(c.id)} disabled={done}>{done ? 'You prayed' : 'I prayed'}</Button>
                     </div>
                   </article>

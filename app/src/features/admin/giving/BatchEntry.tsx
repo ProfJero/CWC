@@ -1,12 +1,11 @@
 import { useEffect, useState } from 'react';
-import { doc, collection, serverTimestamp, writeBatch } from 'firebase/firestore';
 import { Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Modal } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Field, Input, Select, Switch, TextField } from '@/components/ui/input';
 import { MemberPicker } from '@/components/member-picker';
-import { audit, db, getActor } from '@/lib/db';
+import { audit, createMany, getActor } from '@/lib/db';
 import { cedis, fmtDate, isoDate } from '@/lib/format';
 import { receiptNumber, sum, uid } from '@/lib/utils';
 import { useChurch } from '@/lib/settings';
@@ -46,7 +45,6 @@ export function BatchEntry({ open, onOpenChange }: { open: boolean; onOpenChange
     setBusy(true);
     try {
       const actor = getActor();
-      const b = writeBatch(db);
       const created = valid.map((r) => {
         const g = {
           category,
@@ -60,16 +58,11 @@ export function BatchEntry({ open, onOpenChange }: { open: boolean; onOpenChange
           receiptNo: receiptNumber(church.shortName || 'CWC', new Date(date)),
           pledgeId: null,
           campaignId: null,
-          recordedBy: actor?.uid,
           recordedByName: actor?.name,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-          createdBy: actor?.uid ?? null,
         };
-        b.set(doc(collection(db, 'gifts')), g);
         return { g, member: r.who!.member };
       });
-      await b.commit();
+      await createMany('gifts', created.map((c) => c.g));
       void audit('create', 'gifts', undefined, `Batch recorded ${created.length} × ${category}, total ${cedis(total)}`);
       toast.success(`${created.length} gifts recorded · ${cedis(total)}`);
 

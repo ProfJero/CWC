@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { HeartHandshake, Phone, MessageCircle, Lock, Send, Plus, Check, X, Sparkles, Globe, UserRound } from 'lucide-react';
-import { addDoc, arrayUnion, collection, orderBy, query, serverTimestamp } from 'firebase/firestore';
 import { toast } from 'sonner';
-import { useCareLogs, useCareRequests, useTestimonies, useUsers } from '@/lib/queries';
-import { db, getActor, patchDoc, useCollection } from '@/lib/db';
+import { useCareLogs, useCareRequests, useTestimonies, useUsers , useCareNotes, useRoles } from '@/lib/queries';
+import { getActor, insertOnly, patchDoc, rpc } from '@/lib/db';
 import { telHref, whatsappHref, formatPhone } from '@/lib/phone';
 import { fmtDate, relative, fmtDateTime } from '@/lib/format';
 import { cn, titleCase } from '@/lib/utils';
@@ -90,9 +89,11 @@ function RequestSheet({ c, onClose }: { c: CareRequest | null; onClose: () => vo
   const [reply, setReply] = useState('');
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
-  const { data: notes } = useCollection<{ id: string; text: string; by: string; at: { toMillis?: () => number } }>(c ? `care-notes:${c.id}` : null, () => query(collection(db, 'care_requests', c!.id, 'notes'), orderBy('at', 'desc')));
+  const { data: notes } = useCareNotes(c?.id);
   const requester = users.find((u) => u.uid === c?.uid);
-  const pastors = users.filter((u) => ['super_admin', 'admin', 'pastor'].includes(u.role) && u.isActive !== false);
+  const { data: roles } = useRoles();
+  const careRoles = new Set(roles.filter((r) => r.permissions.includes('care.manage')).map((r) => r.key));
+  const pastors = users.filter((u) => careRoles.has(u.role) && u.isActive !== false);
   const phone = c?.phone || requester?.phone;
 
   useEffect(() => {
@@ -105,17 +106,19 @@ function RequestSheet({ c, onClose }: { c: CareRequest | null; onClose: () => vo
     if (!reply.trim()) return;
     setBusy(true);
     try {
-      await patchDoc('care_requests', c!.id, { responses: arrayUnion({ text: reply.trim(), by: getActor()?.name ?? 'Pastor', at: Date.now() }) });
-      if (c!.uid) void broadcast({ title: 'A pastor replied to your request', body: reply.trim().slice(0, 140), url: `/care/${c!.id}`, kind: 'care', audience: c!.uid });
+      // The database notifies the requester (in-app + push) when a pastor replies.
+      await rpc('add_care_response', { p_id: c!.id, p_text: reply.trim() }, ['care_requests']);
       setReply('');
       toast.success(c!.uid ? 'Reply sent — they’ll get a notification' : 'Reply saved');
+    } catch (e) {
+      toast.error((e as Error).message);
     } finally {
       setBusy(false);
     }
   }
   async function addNote() {
     if (!note.trim()) return;
-    await addDoc(collection(db, 'care_requests', c!.id, 'notes'), { text: note.trim(), by: getActor()?.name ?? '', at: serverTimestamp() });
+    await insertOnly('care_notes', { careRequestId: c!.id, text: note.trim(), byName: getActor()?.name ?? '' });
     setNote('');
   }
   async function setStatus(status: CareStatus) {
@@ -183,7 +186,7 @@ function RequestSheet({ c, onClose }: { c: CareRequest | null; onClose: () => vo
             {notes.map((n) => (
               <li key={n.id} className="rounded-xl border border-dashed border-line-strong px-3 py-2 text-sm">
                 <p className="whitespace-pre-wrap">{n.text}</p>
-                <p className="mt-0.5 text-xs text-fg-3">{n.by} · {relative(n.at as never)}</p>
+                <p className="mt-0.5 text-xs text-fg-3">{n.byName} · {relative(n.at)}</p>
               </li>
             ))}
           </ol>

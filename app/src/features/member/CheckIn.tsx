@@ -1,33 +1,38 @@
 import { useState } from 'react';
 import { useParams } from 'react-router';
 import { CheckCircle2, ScanLine, Lock, UserRound } from 'lucide-react';
-import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { useAuth } from '@/lib/auth';
-import { useService } from '@/lib/queries';
-import { db, useDocument } from '@/lib/db';
+import { useMyServiceCheckIn, useService } from '@/lib/queries';
+import { rpc } from '@/lib/db';
+import { useRequireProfile } from '@/components/profile-prompt';
 import { fmtDate } from '@/lib/format';
 import { Button, ButtonLink } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { FullPageLoader } from '@/components/ui/feedback';
-import type { AttendanceRecord } from '@/lib/types';
 import { MemberPage } from './ui';
 
 export default function CheckIn() {
   const { id } = useParams();
   const { profile } = useAuth();
+  const requireProfile = useRequireProfile();
   const { data: s, loading } = useService(id);
   const memberId = profile?.memberId;
-  const { data: existing } = useDocument<AttendanceRecord>(id && memberId ? `attendance/${id}_${memberId}` : null);
+  const { data: existing } = useMyServiceCheckIn(id, memberId);
+  const [doneNow, setDoneNow] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
   if (loading) return <FullPageLoader />;
 
   async function checkIn() {
+    if (!(await requireProfile('check you in'))) return;
     setBusy(true);
     setError('');
     try {
-      await setDoc(doc(db, 'attendance', `${id}_${memberId}`), { serviceId: id, serviceType: s!.type, date: s!.date, memberId, memberName: profile?.fullName ?? '', method: 'self', checkedInAt: serverTimestamp() });
+      const r = await rpc<string>('self_check_in', { p_service: id }, ['attendance']);
+      if (r === 'done') setDoneNow(true);
+      else if (r === 'closed') setError('Check-in has just closed. Please ask an usher to check you in.');
+      else setError('Check-in didn’t go through. Please ask an usher to check you in.');
     } catch {
       setError('Check-in didn’t go through. Please ask an usher to check you in.');
     } finally {
@@ -35,7 +40,7 @@ export default function CheckIn() {
     }
   }
 
-  const state = !s ? 'missing' : existing ? 'done' : !s.isOpen ? 'closed' : !memberId ? 'unlinked' : 'ready';
+  const state = !s ? 'missing' : existing || doneNow ? 'done' : !s.isOpen ? 'closed' : 'ready';
   const view = {
     missing: { icon: <ScanLine className="size-12 text-fg-3" />, title: 'Service not found', text: 'This check-in code may have expired.' },
     done: { icon: <CheckCircle2 className="size-14 text-success" />, title: 'You’re checked in!', text: `Welcome to ${s?.title}. We’re glad you’re here.` },
