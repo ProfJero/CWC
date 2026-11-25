@@ -205,10 +205,10 @@ function PaymentAccounts({ value, onChange }: { value: PaymentAccount[]; onChang
 }
 
 function Integrations() {
-  const [health, setHealth] = useState<null | { ok: boolean; sms?: boolean; push?: boolean; error?: string }>(null);
+  const [health, setHealth] = useState<null | { ok: boolean; sms?: boolean; push?: boolean; media?: boolean; cloudName?: string | null; error?: string }>(null);
   useEffect(() => {
     if (!apiConfigured()) return setHealth({ ok: false, error: 'Not configured' });
-    api<{ ok: boolean; sms: boolean; push: boolean }>('/v1/health')
+    api<{ ok: boolean; sms: boolean; push: boolean; media: boolean; cloudName: string | null }>('/v1/health')
       .then(setHealth)
       .catch((e) => setHealth({ ok: false, error: (e as Error).message }));
   }, []);
@@ -227,7 +227,7 @@ function Integrations() {
         <Row label="CWC API (Edge Function)" ok={health ? health.ok : undefined} detail={health?.ok ? 'Online' : health?.error ?? 'Checking…'} />
         <Row label="ProfJero Connect SMS" ok={health ? !!health.sms : undefined} detail={health?.sms ? 'API key set' : 'A developer adds the key in Developer → Integrations'} />
         <Row label="Push notifications" ok={health ? !!health.push : undefined} detail="Free, sent by the server" />
-        <Row label="Photo & audio storage" ok detail="Supabase Storage" />
+        <Row label="Photo & audio storage" ok={health ? true : undefined} detail={health?.media ? `Cloudinary${health.cloudName ? ` · ${health.cloudName}` : ''}` : 'Supabase Storage until Cloudinary keys are added (Developer → Integrations)'} />
         <Row label="Daily automations" ok detail="Birthdays & reminders at 7:00 AM" />
       </ul>
       <div className="px-5 py-3"><Badge tone="neutral">Secret keys never live in the app — only on the server.</Badge></div>

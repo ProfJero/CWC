@@ -72,7 +72,7 @@ export class Supa {
 
 /* Server-side configuration stored in private.app_config (cached briefly per isolate). */
 let configCache: { at: number; values: Record<string, string> } | null = null;
-const CONFIG_KEYS = ['vapid_public_key', 'vapid_private_key', 'dispatch_secret', 'profjero_api_key'];
+const CONFIG_KEYS = ['vapid_public_key', 'vapid_private_key', 'dispatch_secret', 'profjero_api_key', 'cloudinary_cloud_name', 'cloudinary_api_key', 'cloudinary_api_secret'];
 
 export async function serverConfig(env: Env, fresh = false): Promise<Record<string, string>> {
   if (!fresh && configCache && Date.now() - configCache.at < 60_000) return configCache.values;

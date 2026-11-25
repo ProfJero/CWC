@@ -13,9 +13,10 @@ import { dispatchNotification, ensureVapid } from './push.ts';
 import { dailyJob } from './jobs.ts';
 import { Supa, serverConfig } from './supa.ts';
 import { sendWebPush } from './webpush.ts';
+import { signUpload } from './cloudinary.ts';
 import { HttpError, normalizePhone } from './util.ts';
 
-export const VERSION = '2.0.0';
+export const VERSION = '2.1.0';
 export const PHONE_DOMAIN = 'phone.cwc.app';
 
 function corsHeaders(req: Request, env: Env): Record<string, string> {
@@ -233,7 +234,7 @@ export async function route(req: Request, env: Env): Promise<Response> {
   /* Public */
   if (path === '/' || path === '/v1/health') {
     const cfg = await serverConfig(env).catch(() => ({} as Record<string, string>));
-    return json({ ok: true, name: 'CWC API', version: VERSION, sms: Boolean(env.PROFJERO_API_KEY || cfg.profjero_api_key), push: true, by: 'ProfJero' });
+    return json({ ok: true, name: 'CWC API', version: VERSION, sms: Boolean(env.PROFJERO_API_KEY || cfg.profjero_api_key), push: true, media: Boolean(cfg.cloudinary_cloud_name && cfg.cloudinary_api_key && cfg.cloudinary_api_secret), cloudName: cfg.cloudinary_cloud_name ?? null, by: 'ProfJero' });
   }
   if (path === '/v1/push/public-key' && m === 'GET') {
     const v = await ensureVapid(env);
@@ -281,6 +282,12 @@ export async function route(req: Request, env: Env): Promise<Response> {
     if (!subs.length) throw new HttpError(404, 'This account has no devices with notifications turned on yet.');
     const res = await Promise.all(subs.map((s) => sendWebPush({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, { title: 'Notifications are working 🎉', body: 'You will now hear from Christian Worship Centre.', url: '/notifications', tag: 'test' }, vapid)));
     return json({ devices: subs.length, delivered: res.filter((r) => r.status >= 200 && r.status < 300).length });
+  }
+
+  if (path === '/v1/media/sign' && m === 'POST') {
+    const { folder } = await readJson<{ folder?: string }>(req);
+    await rateLimit(env, `media:${caller.uid}`, 120, 3600);
+    return json(await signUpload({ cloudName: cfg.cloudinary_cloud_name, apiKey: cfg.cloudinary_api_key, apiSecret: cfg.cloudinary_api_secret }, caller, String(folder ?? '')));
   }
 
   if (path === '/v1/me/account' && m === 'DELETE') {

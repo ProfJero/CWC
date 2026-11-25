@@ -1,9 +1,14 @@
 import { supabase } from './supabase';
+import { api, ApiError } from './api';
 import { config } from '@/config';
 
 export type UploadFolder = 'avatars' | 'members' | 'events' | 'devotionals' | 'sermons' | 'announcements' | 'receipts' | 'branding';
 
-/** Media uploads go to Supabase Storage (bucket "media"; expense receipts to the private "receipts" bucket). */
+/**
+ * Media goes to Cloudinary (signed by the server — the API secret never reaches the browser).
+ * Until a developer enters the Cloudinary keys (Developer → Integrations), uploads fall back to
+ * Supabase Storage so nothing breaks. Expense receipts always stay in the private "receipts" bucket.
+ */
 export function cloudinaryConfigured() {
   return config.isConfigured;
 }
@@ -28,11 +33,67 @@ async function downscale(file: File, max = 1600): Promise<Blob> {
 
 const EXT: Record<string, string> = { 'image/webp': 'webp', 'image/jpeg': 'jpg', 'image/png': 'png', 'image/gif': 'gif', 'application/pdf': 'pdf', 'audio/mpeg': 'mp3', 'audio/mp4': 'm4a', 'audio/x-m4a': 'm4a', 'audio/aac': 'aac', 'audio/ogg': 'ogg', 'audio/wav': 'wav' };
 
+interface Signature {
+  signature: string;
+  timestamp: number;
+  apiKey: string;
+  cloudName: string;
+  folder: string;
+}
+
+function xhrUpload(url: string, body: FormData | Blob, headers: Record<string, string>, onProgress?: (pct: number) => void) {
+  return new Promise<string>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', url);
+    Object.entries(headers).forEach(([k, v]) => xhr.setRequestHeader(k, v));
+    xhr.upload.onprogress = (e) => e.lengthComputable && onProgress?.(Math.round((e.loaded / e.total) * 100));
+    xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve(xhr.responseText) : reject(Object.assign(new Error(xhr.responseText || `Upload failed (${xhr.status})`), { status: xhr.status })));
+    xhr.onerror = () => reject(new Error('Upload failed — check your connection.'));
+    xhr.send(body);
+  });
+}
+
+async function uploadToCloudinaryDirect(file: File, folder: UploadFolder, onProgress?: (pct: number) => void): Promise<string | null> {
+  let sig: Signature;
+  try {
+    sig = await api<Signature>('/v1/media/sign', { method: 'POST', json: { folder } });
+  } catch (e) {
+    if (e instanceof ApiError && e.code === 'not_configured') return null; // fall back to Supabase Storage
+    throw e;
+  }
+  const isImage = file.type.startsWith('image/');
+  const resource = isImage ? 'image' : file.type.startsWith('audio/') || file.type.startsWith('video/') ? 'video' : 'raw';
+  const form = new FormData();
+  form.append('file', isImage ? await downscale(file) : file);
+  form.append('api_key', sig.apiKey);
+  form.append('timestamp', String(sig.timestamp));
+  form.append('signature', sig.signature);
+  form.append('folder', sig.folder);
+  try {
+    const text = await xhrUpload(`https://api.cloudinary.com/v1_1/${sig.cloudName}/${resource}/upload`, form, {}, onProgress);
+    const res = JSON.parse(text) as { secure_url?: string };
+    if (!res.secure_url) throw new Error('Upload failed');
+    return res.secure_url;
+  } catch (e) {
+    let msg = 'Upload failed';
+    try {
+      msg = (JSON.parse((e as Error).message) as { error?: { message?: string } }).error?.message || msg;
+    } catch {
+      msg = (e as Error).message.startsWith('Upload failed') ? (e as Error).message : msg;
+    }
+    throw new Error(msg);
+  }
+}
+
 /**
  * Uploads a file and returns its URL. Receipts return a "receipts:<path>" reference that is
  * turned into a short-lived link with `signedUrl()` (they are private).
  */
 export async function uploadMedia(file: File, folder: UploadFolder, onProgress?: (pct: number) => void): Promise<string> {
+  if (folder !== 'receipts') {
+    const url = await uploadToCloudinaryDirect(file, folder, onProgress);
+    if (url) return url;
+  }
   const { data } = await supabase.auth.getSession();
   const token = data.session?.access_token;
   const uid = data.session?.user.id;

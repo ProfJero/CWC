@@ -480,6 +480,19 @@ describe('audit & monitoring', () => {
     const [h] = await as(developer, `select public.dev_system_health() h`);
     expect((h.h as { integrations: { smsKey: boolean } }).integrations.smsKey).toBe(true);
   });
+  it('Cloudinary keys are write-only; only the cloud name is public', async () => {
+    await denied(as(admin, `select public.set_integration_secret('cloudinary_api_secret', 'x')`));
+    await as(developer, `select public.set_integration_secret('cloudinary_cloud_name', 'cwc-demo')`);
+    await as(developer, `select public.set_integration_secret('cloudinary_api_key', '1234')`);
+    await as(developer, `select public.set_integration_secret('cloudinary_api_secret', 'very-secret')`);
+    const [m] = await as(null, `select public.media_config() m`);
+    expect(m.m).toEqual({ provider: 'cloudinary', cloudName: 'cwc-demo' });
+    expect(JSON.stringify(m)).not.toContain('very-secret');
+    await denied(as(admin, `select public.dev_integrations()`));
+    const [d] = await as(developer, `select public.dev_integrations() d`);
+    expect((d.d as { cloudinary: boolean }).cloudinary).toBe(true);
+  });
+
   it('server-only helpers are not callable by clients', async () => {
     await denied(as(null, `select public.hit_rate_limit('x', 1, 60)`));
     await denied(as(member, `select public.server_set_config('dispatch_secret', 'x', true)`));

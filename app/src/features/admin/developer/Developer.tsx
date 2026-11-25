@@ -81,6 +81,8 @@ export default function Developer() {
   const [error, setError] = useState('');
   const [auto, setAuto] = useState(false);
   const [smsKey, setSmsKey] = useState('');
+  const [cld, setCld] = useState({ cloudName: '', apiKey: '', apiSecret: '' });
+  const [cldStatus, setCldStatus] = useState<{ cloudinary: boolean; cloudinaryCloudName?: string | null } | null>(null);
   const [openStack, setOpenStack] = useState<number | null>(null);
   const timer = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
 
@@ -90,6 +92,7 @@ export default function Developer() {
     try {
       const h = await rpc<Health>('dev_system_health');
       setHealth(h);
+      setCldStatus(await rpc<{ cloudinary: boolean; cloudinaryCloudName?: string | null }>('dev_integrations').catch(() => null));
       if (withDiag) setDiag(await api<Diagnostics>('/v1/dev/diagnostics'));
     } catch (e) {
       setError((e as Error).message);
@@ -138,6 +141,18 @@ export default function Developer() {
       setSmsKey('');
       toast.success(smsKey ? 'SMS key saved securely' : 'SMS key removed');
       void load(true);
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  }
+
+  async function saveCloudinary() {
+    try {
+      const entries: [string, string][] = [['cloudinary_cloud_name', cld.cloudName], ['cloudinary_api_key', cld.apiKey], ['cloudinary_api_secret', cld.apiSecret]];
+      for (const [k, v] of entries) if (v.trim()) await rpc('set_integration_secret', { p_key: k, p_value: v.trim() });
+      setCld({ cloudName: '', apiKey: '', apiSecret: '' });
+      toast.success('Cloudinary settings saved', { description: 'New uploads now go to Cloudinary.' });
+      void load(false);
     } catch (e) {
       toast.error((e as Error).message);
     }
@@ -284,6 +299,19 @@ export default function Developer() {
                 <Button onClick={saveSmsKey} disabled={!smsKey && !health?.integrations.smsKey}>{smsKey ? 'Save key' : 'Remove key'}</Button>
               </div>
               {diag?.sms.balance != null && <p className="text-xs text-fg-3">Balance: <code>{JSON.stringify(diag.sms.balance).slice(0, 160)}</code></p>}
+            </div>
+          </Card>
+          <Card>
+            <CardHeader title="Cloudinary (photos & audio)" icon={<HardDrive />} description="Uploads are signed by the server; the API secret is stored server-side and never shown again. Until set, uploads use Supabase Storage." />
+            <div className="space-y-3 px-5 pb-5">
+              <Badge tone={cldStatus?.cloudinary ? 'success' : 'warning'}>{cldStatus?.cloudinary ? `Connected · ${cldStatus.cloudinaryCloudName}` : 'Not connected yet — using Supabase Storage'}</Badge>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <TextField label="Cloud name" autoComplete="off" placeholder={cldStatus?.cloudinaryCloudName ?? 'e.g. cwc-church'} value={cld.cloudName} onChange={(e) => setCld({ ...cld, cloudName: e.target.value })} />
+                <TextField label="API key" autoComplete="off" value={cld.apiKey} onChange={(e) => setCld({ ...cld, apiKey: e.target.value })} />
+                <TextField label="API secret" type="password" autoComplete="off" value={cld.apiSecret} onChange={(e) => setCld({ ...cld, apiSecret: e.target.value })} />
+              </div>
+              <Button onClick={saveCloudinary} disabled={!cld.cloudName && !cld.apiKey && !cld.apiSecret}>Save Cloudinary settings</Button>
+              <p className="text-xs text-fg-3">Find these in Cloudinary → Settings → API Keys. Uploads land in the <code>cwc/</code> folder.</p>
             </div>
           </Card>
           <Card>

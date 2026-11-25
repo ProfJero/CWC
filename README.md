@@ -3,7 +3,8 @@
 A complete church management system and member app for **Christian Worship Centre (CWC)**, built as an installable Progressive Web App that works on any phone, tablet or computer — and keeps working on patchy mobile data.
 
 - **Live app:** <https://cwc-ch.pages.dev> (Cloudflare Pages)
-- **Backend:** Supabase project `cwc-church` (`myektndhhvbkhvkyireg`, Frankfurt) — Postgres + row level security, Auth, Storage, Edge Functions, pg_cron
+- **Backend:** Supabase project `cwc-church` (`myektndhhvbkhvkyireg`, Frankfurt) — Postgres + row level security, Auth, Edge Functions, pg_cron
+- **Media:** Cloudinary (photos, banners, sermon audio). Uploads are signed by the API; a developer enters the cloud name, API key and secret in **Developer → Integrations**. Until then uploads fall back to Supabase Storage. Expense receipts stay in a private Supabase bucket.
 
 **Designed & developed by ProfJero** — *Building Solutions. Empowering Lives.*
 
@@ -110,7 +111,7 @@ Rules enforced by the database (not just hidden in the UI): nobody can change th
 2. **Edge Function:** deploy `supabase/functions/api` as `api` with JWT verification off (`supabase functions deploy api --no-verify-jwt`). Optional env: `ALLOWED_ORIGINS`, `PROFJERO_SENDER_ID`, `VAPID_SUBJECT`.
 3. **Leader accounts:** call `POST /functions/v1/api/v1/admin/bootstrap` with header `x-cwc-secret: <private.app_config.dispatch_secret>` once. It creates accounts for the seeded emails (super admin, developer) with one-time passwords that must be changed at first sign-in.
 4. **App:** `cd app && npm ci`, put `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` in `.env.production` (already set for this project), `npm run build`, deploy `app/dist` to Cloudflare Pages (`public/_headers` and `_redirects` are included).
-5. **SMS:** a developer pastes the ProfJero Connect secret key in **Developer → Integrations**.
+5. **SMS & media:** a developer pastes the ProfJero Connect secret key and the Cloudinary cloud name / API key / API secret in **Developer → Integrations** (stored server-side, never readable again).
 6. **Email:** Supabase’s built-in mailer only delivers to the project team. For password-reset emails to members, add custom SMTP (e.g. Resend/Brevo) in *Supabase → Authentication → Emails*. Phone-only accounts are reset by staff in **Users & roles**.
 
 ## Testing

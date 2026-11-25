@@ -29,10 +29,10 @@ async function token(sub: string, over: Record<string, unknown> = {}) {
 }
 
 const ROLES: Record<string, string[]> = {
-  super_admin: ['users.manage', 'roles.manage', 'system.monitor', 'messaging.sms', 'people.manage'],
-  developer: ['users.manage', 'roles.manage', 'system.monitor', 'messaging.sms', 'people.manage'],
-  admin: ['users.manage', 'messaging.sms', 'people.manage'],
-  pastor: ['messaging.sms', 'people.manage'],
+  super_admin: ['users.manage', 'roles.manage', 'system.monitor', 'messaging.sms', 'people.manage', 'content.manage'],
+  developer: ['users.manage', 'roles.manage', 'system.monitor', 'messaging.sms', 'people.manage', 'content.manage'],
+  admin: ['users.manage', 'messaging.sms', 'people.manage', 'content.manage'],
+  pastor: ['messaging.sms', 'people.manage', 'content.manage'],
   member: [],
 };
 type Call = { url: URL; init: RequestInit; body: unknown };
@@ -240,5 +240,31 @@ describe('SMS proxy', () => {
     expect(() => cleanSmsBody({ message: 'x', recipients: [] })).toThrow();
     const b = cleanSmsBody({ message: 'Hi {first_name}', recipients: [{ phone: '0241234567', fields: { first_name: 'Ama', 'bad key': 'x' } }] }, 'CWC');
     expect(b).toEqual({ message: 'Hi {first_name}', recipients: [{ phone: '233241234567', fields: { first_name: 'Ama' } }], senderId: 'CWC' });
+  });
+});
+
+describe('Cloudinary signing', () => {
+  it('signs uploads for allowed folders and keeps the secret server-side', async () => {
+    config = { cloudinary_cloud_name: 'cwc', cloudinary_api_key: '123', cloudinary_api_secret: 'shh' };
+    backend(USERS);
+    const r = await call('/v1/media/sign', { method: 'POST', as: U.pastor, json: { folder: 'sermons' } });
+    expect(r.status).toBe(200);
+    const b = await r.json();
+    expect(b).toMatchObject({ cloudName: 'cwc', apiKey: '123', folder: 'cwc/sermons' });
+    expect(b.signature).toMatch(/^[0-9a-f]{40}$/);
+    expect(JSON.stringify(b)).not.toContain('shh');
+  });
+  it('limits members to their own avatar folder', async () => {
+    config = { cloudinary_cloud_name: 'cwc', cloudinary_api_key: '123', cloudinary_api_secret: 'shh' };
+    backend(USERS);
+    expect((await call('/v1/media/sign', { method: 'POST', as: U.member, json: { folder: 'events' } })).status).toBe(403);
+    const r = await call('/v1/media/sign', { method: 'POST', as: U.member, json: { folder: 'avatars' } });
+    expect((await r.json()).folder).toBe(`cwc/avatars/${U.member}`);
+  });
+  it('reports not configured without keys and needs sign-in', async () => {
+    config = {};
+    backend(USERS);
+    expect((await call('/v1/media/sign', { method: 'POST', as: U.pastor, json: { folder: 'sermons' } })).status).toBe(503);
+    expect((await call('/v1/media/sign', { method: 'POST', json: { folder: 'sermons' } })).status).toBe(401);
   });
 });
