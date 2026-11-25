@@ -1,4 +1,17 @@
 import { test, expect, type Page } from '@playwright/test';
+import { readFileSync } from 'node:fs';
+
+// Apply the production Content-Security-Policy (public/_headers) to local runs, so CSP problems
+// show up before deploying — the local preview server does not send Cloudflare's headers.
+const CSP = /Content-Security-Policy: (.+)/.exec(readFileSync(new URL('../public/_headers', import.meta.url), 'utf8'))?.[1] ?? '';
+test.beforeEach(async ({ page }) => {
+  if (process.env.E2E_BASE_URL?.startsWith('https://') || !CSP) return;
+  await page.route('**/*', async (route) => {
+    if (route.request().resourceType() !== 'document') return route.continue();
+    const res = await route.fetch();
+    await route.fulfill({ response: res, headers: { ...res.headers(), 'content-security-policy': CSP } });
+  });
+});
 
 const PW = process.env.E2E_PASSWORD ?? '';
 const VIEWPORTS = [

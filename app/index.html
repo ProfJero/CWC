@@ -18,14 +18,7 @@
     <link rel="icon" href="/icons/favicon-32.png" sizes="32x32" type="image/png" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <link rel="author" href="/humans.txt" />
-    <script>
-      // Apply the saved theme before first paint to avoid a flash.
-      try {
-        var t = localStorage.getItem('cwc-theme') || 'system';
-        var d = t === 'dark' || (t === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
-        document.documentElement.classList.toggle('dark', d);
-      } catch (e) {}
-    </script>
+    <script src="/theme-init.js"></script>
     <style>
       html { background: #f7f7f8; color: #18181b; }
       html.dark { background: #0a0d16; color: #eceef3; }
